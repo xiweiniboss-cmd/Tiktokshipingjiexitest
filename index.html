@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>TikTok 无水印下载</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --pink: #FE2C55;
+    --cyan: #25F4EE;
+    --bg: #0f0f12;
+    --card: #1a1a20;
+    --text: #f1f1f2;
+    --muted: #9a9aa3;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .container { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { text-align: center; padding: 24px 0 16px; }
+  header h1 { font-size: 24px; font-weight: 800; letter-spacing: 1px; }
+  header h1 .tk { color: var(--cyan); }
+  header h1 .dl { color: var(--pink); }
+  header p { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: 16px;
+    border: 1px solid #2a2a32;
+  }
+  textarea {
+    width: 100%;
+    min-height: 76px;
+    background: #0c0c0f;
+    border: 1px solid #2a2a32;
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 14px;
+    padding: 12px;
+    resize: none;
+    outline: none;
+  }
+  textarea:focus { border-color: var(--pink); }
+  .row { display: flex; gap: 10px; margin-top: 10px; }
+  .btn {
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 13px 0;
+    cursor: pointer;
+    color: #fff;
+    transition: transform .08s, opacity .2s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-ghost { flex: 1; background: #2a2a32; }
+  .btn-main {
+    width: 100%;
+    margin-top: 12px;
+    font-size: 17px;
+    padding: 15px 0;
+    background: linear-gradient(135deg, var(--pink), #ff5c7a);
+    box-shadow: 0 4px 18px rgba(254,44,85,.35);
+  }
+  .btn-main:disabled { opacity: .5; box-shadow: none; }
+  .btn-dl {
+    width: 100%;
+    margin-top: 10px;
+    background: linear-gradient(135deg, #1da1f2, var(--cyan));
+    color: #04222a;
+  }
+  .btn-dl.hd { background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; }
+  .btn-sub { flex: 1; background: #2a2a32; font-size: 14px; padding: 11px 0; }
+  #loading { display: none; text-align: center; padding: 28px 0; color: var(--muted); }
+  .spinner {
+    width: 36px; height: 36px; margin: 0 auto 12px;
+    border: 3px solid #2a2a32; border-top-color: var(--pink);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #errorMsg {
+    display: none;
+    margin-top: 16px;
+    background: rgba(254,44,85,.12);
+    border: 1px solid rgba(254,44,85,.4);
+    color: #ff8fa3;
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  #result { display: none; }
+  #preview {
+    width: 100%;
+    max-height: 60vh;
+    border-radius: 12px;
+    background: #000;
+    display: block;
+  }
+  .meta { padding: 12px 2px 4px; }
+  .meta .title { font-size: 15px; font-weight: 600; line-height: 1.5; }
+  .meta .author { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  #imgGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  #imgGrid .img-item { position: relative; border-radius: 10px; overflow: hidden; background: #000; }
+  #imgGrid img { width: 100%; display: block; aspect-ratio: 3/4; object-fit: cover; }
+  #imgGrid button {
+    position: absolute; bottom: 8px; right: 8px;
+    background: rgba(0,0,0,.65); color: #fff;
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 20px; font-size: 12px; padding: 6px 12px;
+  }
+  .hint {
+    margin-top: 12px; font-size: 12px; color: var(--muted); line-height: 1.7;
+    background: rgba(37,244,238,.06);
+    border: 1px solid rgba(37,244,238,.2);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 28px; line-height: 1.8; }
+  footer a { color: var(--cyan); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1><span class="tk">TikTok</span> <span class="dl">无水印下载</span></h1>
+    <p>粘贴分享链接，一键保存无水印视频 / 图片</p>
+  </header>
+
+  <div class="card">
+    <textarea id="urlInput" placeholder="在此粘贴 TikTok 分享链接，例如：&#10;https://vt.tiktok.com/xxxxx/&#10;https://www.tiktok.com/@xxx/video/xxxxx"></textarea>
+    <div class="row">
+      <button class="btn btn-ghost" id="pasteBtn">📋 粘贴</button>
+      <button class="btn btn-ghost" id="clearBtn">🗑 清空</button>
+    </div>
+    <button class="btn btn-main" id="parseBtn">⚡ 解析下载</button>
+  </div>
+
+  <div id="loading"><div class="spinner"></div>正在解析，请稍候…</div>
+  <div id="errorMsg"></div>
+
+  <div class="card" id="result">
+    <video id="preview" controls playsinline preload="metadata" style="display:none"></video>
+    <div class="meta">
+      <div class="title" id="vTitle"></div>
+      <div class="author" id="vAuthor"></div>
+    </div>
+    <div id="videoBtns" style="display:none">
+      <button class="btn btn-dl" id="dlBtn">⬇ 下载无水印视频</button>
+      <button class="btn btn-dl hd" id="dlHdBtn" style="display:none">⬇ 下载高清视频</button>
+      <div class="row">
+        <button class="btn btn-sub" id="coverBtn">🖼 封面</button>
+        <button class="btn btn-sub" id="musicBtn">🎵 音乐</button>
+      </div>
+    </div>
+    <div id="imgGrid" style="display:none"></div>
+    <div class="hint" id="iosHint" style="display:none">
+      🍎 iPhone 用户：点击下载后会弹出分享菜单，选择"存储视频"即可保存到相册；<br>
+      如果直接打开了播放页，轻点分享按钮 → 存储视频即可。
+    </div>
+  </div>
+
+  <footer>
+    解析服务由 <a href="https://www.tikwm.com" target="_blank">TikWM</a> 提供<br>
+    仅供个人学习交流，请勿用于商业用途
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var urlInput = $('urlInput'), parseBtn = $('parseBtn'),
+      loading = $('loading'), errorMsg = $('errorMsg'), result = $('result');
+
+  var API = 'https://www.tikwm.com/api/?url=';
+
+  function showError(msg){
+    errorMsg.style.display = 'block';
+    errorMsg.innerHTML = msg;
+    loading.style.display = 'none';
+    result.style.display = 'none';
+  }
+  function hideError(){ errorMsg.style.display = 'none'; errorMsg.innerHTML = ''; }
+
+  $('pasteBtn').onclick = function(){
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText().then(function(t){ urlInput.value = t.trim(); })
+        .catch(function(){ showError('无法读取剪贴板，请手动长按粘贴。'); });
+    } else { showError('当前浏览器不支持一键粘贴，请手动长按粘贴。'); }
+  };
+  $('clearBtn').onclick = function(){ urlInput.value=''; hideError(); result.style.display='none'; };
+
+  // —— 下载核心：三层兜底，iPhone 优先走分享菜单 ——
+  function downloadFile(url, filename){
+    showDlStatus('正在准备下载…');
+    fetch(url).then(function(res){
+      if(!res.ok) throw new Error('fetch failed');
+      return res.blob();
+    }).then(function(blob){
+      var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+      // 第1层：iOS 分享菜单（体验最好，弹出即选"存储视频"）
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        hideDlStatus();
+        return navigator.share({ files: [file], title: filename }).catch(function(){});
+      }
+      // 第2层：blob + download 属性（触发下载管理器）
+      var objUrl = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = objUrl; a.download = filename;
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 4000);
+      hideDlStatus();
+    }).catch(function(){
+      // 第3层：直接新标签页打开 + 提示手动保存
+      hideDlStatus();
+      window.open(url, '_blank');
+      showError('已在新页面打开，长按视频 / 图片选择"保存"即可。<br>（当前网络无法直接拉取文件）');
+      setTimeout(hideError, 6000);
+    });
+  }
+
+  var dlStatusTimer = null;
+  function showDlStatus(t){
+    parseBtn.disabled = true;
+    parseBtn.textContent = t;
+    clearTimeout(dlStatusTimer);
+  }
+  function hideDlStatus(){
+    parseBtn.disabled = false;
+    parseBtn.textContent = '⚡ 解析下载';
+  }
+
+  function fileName(base, ext){ return 'tiktok_' + base + '.' + ext; }
+
+  parseBtn.onclick = function(){
+    var url = urlInput.value.trim();
+    hideError();
+    if(!url){ showError('请先粘贴 TikTok 分享链接。'); return; }
+    if(!/tiktok\.com|vt\.tiktok|vm\.tiktok|tiktokv\.com/.test(url)){
+      showError('链接看起来不像 TikTok 分享链接，请检查后重试。');
+      return;
+    }
+    loading.style.display = 'block';
+    result.style.display = 'none';
+    parseBtn.disabled = true;
+
+    fetch(API + encodeURIComponent(url))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        loading.style.display = 'none';
+        parseBtn.disabled = false;
+        if(j.code !== 0 || !j.data){ throw new Error(j.msg || '解析失败'); }
+        renderResult(j.data);
+      })
+      .catch(function(e){
+        loading.style.display = 'none';
+        parseBtn.disabled = false;
+        showError('解析失败：' + (e.message || '网络错误') + '<br>请确认链接有效，或稍后重试。');
+      });
+  };
+
+  function renderResult(d){
+    result.style.display = 'block';
+    $('vTitle').textContent = d.title || 'TikTok 视频';
+    var author = (d.author && d.author.nickname) ? d.author.nickname : '';
+    var dur = d.duration ? ' · ' + d.duration + 's' : '';
+    $('vAuthor').textContent = (author ? '@' + author : '') + dur;
+
+    var isImagePost = d.images && d.images.length > 0;
+    $('videoBtns').style.display = isImagePost ? 'none' : 'block';
+    $('imgGrid').style.display = isImagePost ? 'grid' : 'none';
+    $('preview').style.display = isImagePost ? 'none' : 'block';
+    $('iosHint').style.display = 'block';
+
+    if(isImagePost){
+      // 图集帖：每张图独立下载按钮
+      var grid = $('imgGrid'); grid.innerHTML = '';
+      d.images.forEach(function(src, i){
+        var div = document.createElement('div');
+        div.className = 'img-item';
+        var img = document.createElement('img');
+        img.src = src; img.loading = 'lazy'; img.alt = '图片 ' + (i+1);
+        var btn = document.createElement('button');
+        btn.textContent = '⬇ 下载';
+        btn.onclick = function(){ downloadFile(src, fileName(d.id + '_' + (i+1), 'jpg')); };
+        div.appendChild(img); div.appendChild(btn);
+        grid.appendChild(div);
+      });
+    } else {
+      var preview = $('preview');
+      preview.src = d.play;
+      preview.poster = d.cover || d.origin_cover || '';
+      $('dlBtn').onclick = function(){ downloadFile(d.play, fileName(d.id, 'mp4')); };
+      if(d.hdplay){
+        $('dlHdBtn').style.display = 'block';
+        $('dlHdBtn').onclick = function(){ downloadFile(d.hdplay, fileName(d.id + '_hd', 'mp4')); };
+      } else { $('dlHdBtn').style.display = 'none'; }
+      $('coverBtn').onclick = function(){
+        downloadFile(d.origin_cover || d.cover, fileName(d.id + '_cover', 'jpg'));
+      };
+      $('musicBtn').onclick = function(){
+        if(d.music) downloadFile(d.music, fileName(d.id + '_music', 'mp3'));
+        else showError('该视频没有可下载的音乐。');
+      };
+    }
+    result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+})();
+</script>
+</body>
+</html>
