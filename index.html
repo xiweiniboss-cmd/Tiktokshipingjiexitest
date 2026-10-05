@@ -146,7 +146,7 @@
   <div id="errorMsg"></div>
 
   <div class="card" id="result">
-    <video id="preview" controls playsinline preload="metadata" style="display:none"></video>
+    <video id="preview" controls playsinline preload="metadata" referrerpolicy="no-referrer" style="display:none"></video>
     <div class="meta">
       <div class="title" id="vTitle"></div>
       <div class="author" id="vAuthor"></div>
@@ -224,7 +224,7 @@
         return;
       }
       var u = urls[idx++];
-      fetch(u).then(function(res){
+      fetch(u, { referrerPolicy: 'no-referrer' }).then(function(res){
         if(!res.ok) throw new Error('fetch failed: ' + res.status);
         return res.blob();
       }).then(function(blob){
@@ -310,6 +310,7 @@
         div.className = 'img-item';
         var img = document.createElement('img');
         img.src = src; img.loading = 'lazy'; img.alt = '图片 ' + (i+1);
+        img.referrerPolicy = 'no-referrer';
         var btn = document.createElement('button');
         btn.textContent = '⬇ 下载';
         btn.onclick = function(){ downloadFile(src, fileName(d.id + '_' + (i+1), 'jpg')); };
