@@ -202,36 +202,30 @@
     return '/api/dl?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename);
   }
 
-  // —— 下载核心：手机直连 TikTok CDN（住宅 IP 不会被拦）
+  // —— 下载核心：手机直连 TikTok（住宅 IP 不会被拦），多地址依次尝试 ——
   // 第1层：fetch + Web Share（一键分享保存，最顺滑）
   // 第2层：fetch + blob 下载
   // 第3层：新页面打开，引导用户长按保存（iOS 系统级能力，一定可用）
-  function downloadFile(url, filename){
+  function downloadFile(url, filename, altUrls){
+    var urls = [url].concat(altUrls || []);
+    var idx = 0;
     setParseBtn('正在准备下载…', true);
-    fetch(url).then(function(res){
-      if(!res.ok) throw new Error('fetch failed: ' + res.status);
-      return res.blob();
-    }).then(function(blob){
-      var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+
+    function tryNext(){
+      if(idx >= urls.length){
         resetParseBtn();
-        return navigator.share({ files: [file], title: filename }).catch(function(){});
+        window.open(url, '_blank');
+        showError('自动下载被拦截，已在新页面打开视频。<br>请<b>长按视频 → 保存到照片</b>，即可保存无水印视频。');
+        return;
       }
-      var objUrl = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = objUrl; a.download = filename;
-      document.body.appendChild(a); a.click();
-      setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 4000);
-      resetParseBtn();
-    }).catch(function(){
-      resetParseBtn();
-      // 直连被浏览器 CORS 拦截：用代理再试一次
-      fetch(dlProxy(url, filename)).then(function(res){
-        if(!res.ok) throw new Error('proxy failed: ' + res.status);
+      var u = urls[idx++];
+      fetch(u).then(function(res){
+        if(!res.ok) throw new Error('fetch failed: ' + res.status);
         return res.blob();
       }).then(function(blob){
-        var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+        var file = new File([blob], filename, { type: blob.type || 'video/mp4' });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          resetParseBtn();
           return navigator.share({ files: [file], title: filename }).catch(function(){});
         }
         var objUrl = URL.createObjectURL(blob);
@@ -239,12 +233,12 @@
         a.href = objUrl; a.download = filename;
         document.body.appendChild(a); a.click();
         setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 4000);
+        resetParseBtn();
       }).catch(function(){
-        // 都失败：新页面打开，iOS 长按可存
-        window.open(url, '_blank');
-        showError('自动下载被拦截，已在新页面打开视频。<br>请<b>长按视频 → 保存到照片</b>，即可保存无水印视频。');
+        tryNext(); // 这个地址不行，试下一个
       });
-    });
+    }
+    tryNext();
   }
 
   function setParseBtn(t, disabled){
@@ -321,7 +315,7 @@
       var preview = $('preview');
       preview.src = d.play;
       preview.poster = d.cover || d.origin_cover || '';
-      $('dlBtn').onclick = function(){ downloadFile(d.play, fileName(d.id, 'mp4')); };
+      $('dlBtn').onclick = function(){ downloadFile(d.play, fileName(d.id, 'mp4'), d.play_alts); };
       if(d.hdplay){
         $('dlHdBtn').style.display = 'block';
         $('dlHdBtn').onclick = function(){ downloadFile(d.hdplay, fileName(d.id + '_hd', 'mp4')); };
