@@ -161,8 +161,7 @@
     </div>
     <div id="imgGrid" style="display:none"></div>
     <div class="hint" id="iosHint" style="display:none">
-      🍎 iPhone 用户：点击下载后会弹出下载提示，直接点下载即可保存；<br>
-      视频也可以在分享菜单中选择"存储视频"保存到相册。
+      🍎 iPhone 用户：点下载会自动保存；若提示被拦截，可<b>长按上方视频 → 保存到照片</b>，同样是无水印原视频。
     </div>
   </div>
 
@@ -203,21 +202,21 @@
     return '/api/dl?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename);
   }
 
-  // —— 下载核心：经由本站代理，同源 + attachment 头，iPhone 弹出下载提示 ——
+  // —— 下载核心：手机直连 TikTok CDN（住宅 IP 不会被拦）
+  // 第1层：fetch + Web Share（一键分享保存，最顺滑）
+  // 第2层：fetch + blob 下载
+  // 第3层：新页面打开，引导用户长按保存（iOS 系统级能力，一定可用）
   function downloadFile(url, filename){
-    var proxy = dlProxy(url, filename);
     setParseBtn('正在准备下载…', true);
-    fetch(proxy).then(function(res){
+    fetch(url).then(function(res){
       if(!res.ok) throw new Error('fetch failed: ' + res.status);
       return res.blob();
     }).then(function(blob){
       var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-      // 第1层：iOS 分享菜单（弹出即选"存储视频/图像"）
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         resetParseBtn();
         return navigator.share({ files: [file], title: filename }).catch(function(){});
       }
-      // 第2层：blob + download 属性（下载管理器）
       var objUrl = URL.createObjectURL(blob);
       var a = document.createElement('a');
       a.href = objUrl; a.download = filename;
@@ -225,9 +224,26 @@
       setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 4000);
       resetParseBtn();
     }).catch(function(){
-      // 第3层：直接打开代理链接（带 attachment 头，浏览器弹出下载）
       resetParseBtn();
-      window.open(proxy, '_blank');
+      // 直连被浏览器 CORS 拦截：用代理再试一次
+      fetch(dlProxy(url, filename)).then(function(res){
+        if(!res.ok) throw new Error('proxy failed: ' + res.status);
+        return res.blob();
+      }).then(function(blob){
+        var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          return navigator.share({ files: [file], title: filename }).catch(function(){});
+        }
+        var objUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = objUrl; a.download = filename;
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 4000);
+      }).catch(function(){
+        // 都失败：新页面打开，iOS 长按可存
+        window.open(url, '_blank');
+        showError('自动下载被拦截，已在新页面打开视频。<br>请<b>长按视频 → 保存到照片</b>，即可保存无水印视频。');
+      });
     });
   }
 
