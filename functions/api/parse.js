@@ -22,20 +22,30 @@ export async function onRequest(context) {
     return json({ code: -1, msg: '链接看起来不像 TikTok 分享链接' }, 400);
   }
 
-  // —— 通道1: TikWM ——
-  try {
-    const tw = await fetchTikwm(target);
-    if (tw && tw.code === 0 && tw.data) {
-      tw.data._source = 'tikwm';
-      return json(tw);
+  // —— 通道1: TikWM（双域名 + 重试，Cloudflare 出口 IP 轮换时可能命中可用额度） ——
+  const tikwmHosts = [
+    'https://www.tikwm.com/api/',
+    'https://tikwm.com/api/',
+  ];
+  for (const host of tikwmHosts) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const tw = await fetchTikwm(host, target);
+        if (tw && tw.code === 0 && tw.data) {
+          tw.data._source = 'tikwm';
+          return json(tw);
+        }
+        // 明确的"链接无效"时，直接返回，不再浪费时间
+        if (tw && /parsing is failed|invalid/i.test(tw.msg || '')) {
+          return json(tw);
+        }
+        // 额度用完 → 换域名/重试；其他情况也继续尝试
+      } catch (e) {
+        // 继续下一个
+      }
+      // 两次尝试之间短暂等待
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
     }
-    // tikwm 返回了明确的"链接无效"时，直接返回，不再走备用通道浪费时间
-    if (tw && /parsing is failed|invalid/i.test(tw.msg || '')) {
-      return json(tw);
-    }
-    // 其他情况（额度用完、网络异常）继续走通道2
-  } catch (e) {
-    // 继续通道2
   }
 
   // —— 通道2: 直抓 TikTok 页面 ——
@@ -54,11 +64,11 @@ export async function onRequest(context) {
   });
 }
 
-async function fetchTikwm(shareUrl) {
+async function fetchTikwm(host, shareUrl) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15000);
   try {
-    const r = await fetch('https://www.tikwm.com/api/?url=' + encodeURIComponent(shareUrl), {
+    const r = await fetch(host + '?url=' + encodeURIComponent(shareUrl), {
       headers: { 'User-Agent': MOBILE_UA },
       signal: ctrl.signal,
     });
