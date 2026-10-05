@@ -24,10 +24,15 @@ export async function onRequest(context) {
     });
     const text = await r.text();
     // 确保上游返回的是 JSON，否则给出明确错误
+    let data;
     try {
-      JSON.parse(text);
+      data = JSON.parse(text);
     } catch (e) {
       return json({ code: -1, msg: '上游接口返回异常（非 JSON），可能被拦截' }, 502);
+    }
+    // 免费额度用完时，给出中文友好提示
+    if (data.code === -1 && /limit/i.test(data.msg || '')) {
+      return json({ code: -1, msg: '接口今日免费额度已用完，请稍后再试（一般次日恢复）' });
     }
     return new Response(text, {
       headers: {
