@@ -74,6 +74,25 @@ export async function onRequest(context) {
     out.tests.tikwm = { error: String(e.message || e) };
   }
 
+  // 1b. tikwm 不带 www 域名（可能是独立额度池）
+  try {
+    const full = await (
+      await fetch('https://tikwm.com/api/?url=' + encodeURIComponent(target), {
+        headers: { 'User-Agent': MOBILE_UA },
+      })
+    ).text();
+    const j = JSON.parse(full);
+    out.tests.tikwm_nowww = {
+      ok: true,
+      code: j.code,
+      msg: j.msg,
+      hasData: !!j.data,
+      head: full.slice(0, 120),
+    };
+  } catch (e) {
+    out.tests.tikwm_nowww = { ok: false, error: String(e.message || e) };
+  }
+
   // 2a. 直抓 www.tiktok.com（短链自动跳转）
   out.tests.scrape_www = await timedFetch(
     target,
