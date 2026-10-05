@@ -161,7 +161,7 @@
     </div>
     <div id="imgGrid" style="display:none"></div>
     <div class="hint" id="iosHint" style="display:none">
-      🍎 iPhone 用户：点下载会自动保存；若提示被拦截，可<b>长按上方视频 → 保存到照片</b>，同样是无水印原视频。
+      🍎 iPhone 用户：点"下载"会自动尝试保存；若不成功，<b>长按上方视频 → 保存到照片</b>，同样是无水印原视频，这是最稳的方法。
     </div>
   </div>
 
@@ -204,8 +204,7 @@
 
   // —— 下载核心：手机直连 TikTok（住宅 IP 不会被拦），多地址依次尝试 ——
   // 第1层：fetch + Web Share（一键分享保存，最顺滑）
-  // 第2层：fetch + blob 下载
-  // 第3层：新页面打开，引导用户长按保存（iOS 系统级能力，一定可用）
+  // 失败则高亮预览视频，引导长按保存（iOS 系统级能力，一定可用）
   function downloadFile(url, filename, altUrls){
     var urls = [url].concat(altUrls || []);
     var idx = 0;
@@ -214,8 +213,14 @@
     function tryNext(){
       if(idx >= urls.length){
         resetParseBtn();
-        window.open(url, '_blank');
-        showError('自动下载被拦截，已在新页面打开视频。<br>请<b>长按视频 → 保存到照片</b>，即可保存无水印视频。');
+        // 全部直连失败：引导用户长按预览视频保存
+        var preview = $('preview');
+        if(preview){
+          preview.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          preview.style.boxShadow = '0 0 0 3px var(--pink)';
+          setTimeout(function(){ preview.style.boxShadow = 'none'; }, 3000);
+        }
+        showError('一键下载被浏览器拦截。<br>请<b>长按上方视频 → 保存到照片</b>，即可保存无水印视频到相册。');
         return;
       }
       var u = urls[idx++];
