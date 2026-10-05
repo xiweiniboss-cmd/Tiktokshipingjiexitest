@@ -161,8 +161,8 @@
     </div>
     <div id="imgGrid" style="display:none"></div>
     <div class="hint" id="iosHint" style="display:none">
-      🍎 iPhone 用户：点击下载后会弹出分享菜单，选择"存储视频"即可保存到相册；<br>
-      如果直接打开了播放页，轻点分享按钮 → 存储视频即可。
+      🍎 iPhone 用户：点击下载后会弹出下载提示，直接点下载即可保存；<br>
+      视频也可以在分享菜单中选择"存储视频"保存到相册。
     </div>
   </div>
 
@@ -179,13 +179,15 @@
   var urlInput = $('urlInput'), parseBtn = $('parseBtn'),
       loading = $('loading'), errorMsg = $('errorMsg'), result = $('result');
 
-  var API = 'https://www.tikwm.com/api/?url=';
+  // 走本站 Cloudflare Pages 函数代理，避免直连被拦截
+  var API = '/api/parse?url=';
 
   function showError(msg){
     errorMsg.style.display = 'block';
     errorMsg.innerHTML = msg;
     loading.style.display = 'none';
     result.style.display = 'none';
+    resetParseBtn();
   }
   function hideError(){ errorMsg.style.display = 'none'; errorMsg.innerHTML = ''; }
 
@@ -197,44 +199,45 @@
   };
   $('clearBtn').onclick = function(){ urlInput.value=''; hideError(); result.style.display='none'; };
 
-  // —— 下载核心：三层兜底，iPhone 优先走分享菜单 ——
+  function dlProxy(url, filename){
+    return '/api/dl?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename);
+  }
+
+  // —— 下载核心：经由本站代理，同源 + attachment 头，iPhone 弹出下载提示 ——
   function downloadFile(url, filename){
-    showDlStatus('正在准备下载…');
-    fetch(url).then(function(res){
-      if(!res.ok) throw new Error('fetch failed');
+    var proxy = dlProxy(url, filename);
+    setParseBtn('正在准备下载…', true);
+    fetch(proxy).then(function(res){
+      if(!res.ok) throw new Error('fetch failed: ' + res.status);
       return res.blob();
     }).then(function(blob){
       var file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-      // 第1层：iOS 分享菜单（体验最好，弹出即选"存储视频"）
+      // 第1层：iOS 分享菜单（弹出即选"存储视频/图像"）
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        hideDlStatus();
+        resetParseBtn();
         return navigator.share({ files: [file], title: filename }).catch(function(){});
       }
-      // 第2层：blob + download 属性（触发下载管理器）
+      // 第2层：blob + download 属性（下载管理器）
       var objUrl = URL.createObjectURL(blob);
       var a = document.createElement('a');
       a.href = objUrl; a.download = filename;
       document.body.appendChild(a); a.click();
       setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 4000);
-      hideDlStatus();
+      resetParseBtn();
     }).catch(function(){
-      // 第3层：直接新标签页打开 + 提示手动保存
-      hideDlStatus();
-      window.open(url, '_blank');
-      showError('已在新页面打开，长按视频 / 图片选择"保存"即可。<br>（当前网络无法直接拉取文件）');
-      setTimeout(hideError, 6000);
+      // 第3层：直接打开代理链接（带 attachment 头，浏览器弹出下载）
+      resetParseBtn();
+      window.open(proxy, '_blank');
     });
   }
 
-  var dlStatusTimer = null;
-  function showDlStatus(t){
-    parseBtn.disabled = true;
+  function setParseBtn(t, disabled){
     parseBtn.textContent = t;
-    clearTimeout(dlStatusTimer);
+    parseBtn.disabled = !!disabled;
   }
-  function hideDlStatus(){
-    parseBtn.disabled = false;
+  function resetParseBtn(){
     parseBtn.textContent = '⚡ 解析下载';
+    parseBtn.disabled = false;
   }
 
   function fileName(base, ext){ return 'tiktok_' + base + '.' + ext; }
@@ -249,19 +252,25 @@
     }
     loading.style.display = 'block';
     result.style.display = 'none';
-    parseBtn.disabled = true;
+    setParseBtn('解析中…', true);
 
     fetch(API + encodeURIComponent(url))
-      .then(function(r){ return r.json(); })
-      .then(function(j){
+      .then(function(r){
+        return r.text().then(function(t){
+          var j;
+          try { j = JSON.parse(t); }
+          catch(e){ throw new Error('服务器返回异常，可能是网络被拦截，请稍后重试'); }
+          if(j.code !== 0 || !j.data){ throw new Error(j.msg || '解析失败'); }
+          return j.data;
+        });
+      })
+      .then(function(data){
         loading.style.display = 'none';
-        parseBtn.disabled = false;
-        if(j.code !== 0 || !j.data){ throw new Error(j.msg || '解析失败'); }
-        renderResult(j.data);
+        resetParseBtn();
+        renderResult(data);
       })
       .catch(function(e){
         loading.style.display = 'none';
-        parseBtn.disabled = false;
         showError('解析失败：' + (e.message || '网络错误') + '<br>请确认链接有效，或稍后重试。');
       });
   };
@@ -280,7 +289,6 @@
     $('iosHint').style.display = 'block';
 
     if(isImagePost){
-      // 图集帖：每张图独立下载按钮
       var grid = $('imgGrid'); grid.innerHTML = '';
       d.images.forEach(function(src, i){
         var div = document.createElement('div');
