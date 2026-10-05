@@ -213,19 +213,21 @@
     function tryNext(){
       if(idx >= urls.length){
         resetParseBtn();
-        // 全部直连失败：引导用户长按预览视频保存
+        // 全部直连失败：显示每个地址的具体错误，方便排查
         var preview = $('preview');
         if(preview){
           preview.scrollIntoView({ behavior: 'smooth', block: 'center' });
           preview.style.boxShadow = '0 0 0 3px var(--pink)';
           setTimeout(function(){ preview.style.boxShadow = 'none'; }, 3000);
         }
-        showError('一键下载被浏览器拦截。<br>请<b>长按上方视频 → 保存到照片</b>，即可保存无水印视频到相册。');
+        showError('一键下载失败，各地址错误如下：<br>' + errLog.join('<br>') +
+          '<br><br>请<b>长按上方视频 → 保存到照片</b>，即可保存无水印视频到相册。');
         return;
       }
       var u = urls[idx++];
+      var shortUrl = u.length > 60 ? u.substring(0, 60) + '...' : u;
       fetch(u, { referrerPolicy: 'no-referrer' }).then(function(res){
-        if(!res.ok) throw new Error('fetch failed: ' + res.status);
+        if(!res.ok) throw new Error('HTTP ' + res.status);
         return res.blob();
       }).then(function(blob){
         var file = new File([blob], filename, { type: blob.type || 'video/mp4' });
@@ -239,10 +241,12 @@
         document.body.appendChild(a); a.click();
         setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 4000);
         resetParseBtn();
-      }).catch(function(){
+      }).catch(function(e){
+        errLog.push('地址' + idx + ' (' + shortUrl + '): ' + (e.message || '网络错误'));
         tryNext(); // 这个地址不行，试下一个
       });
     }
+    var errLog = [];
     tryNext();
   }
 
