@@ -144,19 +144,16 @@ async function fetchRapidApi(apiKey, videoId) {
       if (images.length) return { ...base, images };
     }
 
-    // 视频帖：优先用 www.tiktok.com/aweme/v1/play 官方播放地址（最稳定），
-    // 其次用 PlayAddrStruct.UrlList 里的 CDN 备用地址
+    // 视频帖：preview 用 CDN 直链（<video> 标签可直接播放），
+    // 下载时再依次尝试 aweme 官方地址和其他 CDN 备用地址
     const urlList = video.PlayAddrStruct?.UrlList || [];
     const awemeUrl = urlList.find((u) => u.includes('/aweme/v1/play/'));
-    const cdnUrls = urlList.filter((u) => !u.includes('/aweme/v1/play/'));
-    const candidates = [awemeUrl, video.playAddr, ...cdnUrls].filter(Boolean);
-    // 去重
-    const playUrls = [...new Set(candidates)];
-    if (!playUrls.length) return null;
+    const cdnUrls = [...new Set([video.playAddr, ...urlList.filter((u) => !u.includes('/aweme/v1/play/'))].filter(Boolean))];
+    if (!cdnUrls.length) return null;
     return {
       ...base,
-      play: playUrls[0],
-      play_alts: playUrls.slice(1),
+      play: cdnUrls[0],
+      play_alts: [awemeUrl, ...cdnUrls.slice(1)].filter(Boolean),
       wmplay: video.downloadAddr || '',
     };
   } finally {
