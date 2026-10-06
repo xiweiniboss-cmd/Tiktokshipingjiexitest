@@ -8,7 +8,7 @@ export async function onRequestGet(context) {
   const kv = env.FEEDBACK_KV;
   if (ip && kv) {
     try {
-      used = Number((await kv.get('dlimit_tiktok_' + ip + '_' + bjDate)) || 0);
+      used = Number((await kv.get('dlimit_' + ip + '_' + bjDate)) || 0);
     } catch {}
   }
   return new Response(

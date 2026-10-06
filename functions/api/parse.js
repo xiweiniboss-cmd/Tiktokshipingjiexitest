@@ -64,7 +64,7 @@ export async function onRequest(context) {
   // 每日解析限额：同一 IP 每天最多 20 次（防刷 API 烧积分），按北京时间算天
   const DAILY_LIMIT = 20;
   const bjDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-  const quotaKey = 'dlimit_tiktok_' + parseIp + '_' + bjDate;
+  const quotaKey = 'dlimit_' + parseIp + '_' + bjDate;
   let usedToday = 0;
   if (parseIp && kv) {
     try { usedToday = Number((await kv.get(quotaKey)) || 0); } catch {}
