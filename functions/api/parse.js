@@ -115,6 +115,7 @@ export async function onRequest(context) {
         hist.unshift({
           t: Date.now(),
           ip: parseIp,
+          dev: deviceId || '',
           cc: String(cf2.country || 'XX').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'XX',
           region: cf2.region || '',
           city: cf2.city || '',
