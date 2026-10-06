@@ -26,6 +26,28 @@ export async function onRequest(context) {
     return json({ code: -1, msg: '链接看起来不像 TikTok 分享链接' }, 400);
   }
 
+  // 解析冷却：同一 IP 60 秒内只能解析一次（防刷 API 额度）
+  const PARSE_COOLDOWN_SECS = 60;
+  const parseIp = context.request.headers.get('cf-connecting-ip') || '';
+  const kv = env.FEEDBACK_KV;
+  if (parseIp && kv) {
+    const lastTs = await kv.get('pcool_' + parseIp);
+    if (lastTs) {
+      const remain = PARSE_COOLDOWN_SECS - Math.floor((Date.now() - Number(lastTs)) / 1000);
+      if (remain > 0) return json({ code: -1, msg: `解析太频繁，请 ${remain} 秒后再试` }, 429);
+    }
+  }
+  const succeed = async (obj) => {
+    if (parseIp && kv) {
+      try {
+        await kv.put('pcool_' + parseIp, String(Date.now()), {
+          expirationTtl: PARSE_COOLDOWN_SECS,
+        });
+      } catch {}
+    }
+    return json(obj);
+  };
+
   // —— 通道1: RapidAPI（独立额度，最优先） ——
   if (env.RAPIDAPI_KEY) {
     try {
@@ -34,7 +56,7 @@ export async function onRequest(context) {
         const data = await fetchRapidApi(env.RAPIDAPI_KEY, videoId);
         if (data) {
           data._source = 'rapidapi';
-          return json({ code: 0, msg: 'success', data });
+          return succeed({ code: 0, msg: 'success', data });
         }
       }
     } catch (e) {
@@ -50,7 +72,7 @@ export async function onRequest(context) {
         const tw = await fetchTikwm(host, target);
         if (tw && tw.code === 0 && tw.data) {
           tw.data._source = 'tikwm';
-          return json(tw);
+          return succeed(tw);
         }
         if (tw && /parsing is failed|invalid/i.test(tw.msg || '')) {
           return json(tw);
@@ -64,7 +86,7 @@ export async function onRequest(context) {
   try {
     const scraped = await scrapeTikTok(target);
     if (scraped) {
-      return json({ code: 0, msg: 'success', data: scraped });
+      return succeed({ code: 0, msg: 'success', data: scraped });
     }
   } catch (e) {}
 
