@@ -69,6 +69,13 @@ export async function onRequest(context) {
         });
       } catch {}
     }
+    // 本站解析次数统计（仅成功计数）
+    if (kv) {
+      try {
+        const cur = Number((await kv.get('stats_parse_tiktok')) || 0);
+        await kv.put('stats_parse_tiktok', String(cur + 1));
+      } catch {}
+    }
     return json(obj);
   };
 
