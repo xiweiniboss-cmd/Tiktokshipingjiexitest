@@ -55,6 +55,9 @@ h2{font-size:16px;margin:24px 0 12px;color:#f1f1f3}
 </div></div>
 <div class="panel" id="geoBars" style="margin-top:12px"></div>
 
+<h2>🕐 最近解析者</h2>
+<div class="panel" id="histList"><div style="color:#9a9aa3;font-size:13px;text-align:center">加载中…</div></div>
+
 <div class="refresh"><button onclick="load()">🔄 刷新</button></div>
 <div class="links"><a href="/admin?key=" id="adminLink">💬 反馈管理</a></div>
 </div><script>
@@ -84,7 +87,27 @@ async function load(){
     renderPie(sites, sum);
     renderBars(sites);
     loadGeo();
+    loadHistory();
   }catch(e){ grid.innerHTML = '<div class="err">网络错误</div>'; }
+}
+function escH(s){ return String(s || '').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+async function loadHistory(){
+  const box = document.getElementById('histList');
+  try{
+    const r = await fetch('/api/parse-history?key=' + encodeURIComponent(key));
+    const j = await r.json();
+    if(!j.ok || !j.items || !j.items.length){ box.innerHTML = '<div style="color:#9a9aa3;font-size:13px;text-align:center">暂无数据（新解析才会记录）</div>'; return; }
+    box.innerHTML = '';
+    j.items.slice(0, 20).forEach(function(h){
+      const geo = [COUNTRY_ZH[h.cc] || h.cc || '', h.region || '', h.city || ''].filter(Boolean).join('·');
+      const time = new Date(h.t).toLocaleString('zh-CN', {hour12:false});
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:10px 0;border-bottom:1px solid #2a2a34;line-height:1.8';
+      row.innerHTML = '<div style="font-size:14px"><b>' + escH(h.ip || '未知IP') + '</b>' + (geo ? ' <span style="color:#9a9aa3;font-size:13px">(' + escH(geo) + ')</span>' : '') + '</div>' +
+        '<div style="color:#9a9aa3;font-size:12px">' + escH(h.site) + ' · ' + escH(time) + '</div>';
+      box.appendChild(row);
+    });
+  }catch(e){ box.innerHTML = '<div style="color:#9a9aa3;font-size:13px;text-align:center">加载失败</div>'; }
 }
 async function loadGeo(){
   try{

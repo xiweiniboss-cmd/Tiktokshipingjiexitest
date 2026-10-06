@@ -86,6 +86,23 @@ export async function onRequest(context) {
         await kv.put(gk, String(gc + 1));
       } catch {}
     }
+    // 最近解析记录（保留最近 20 条）
+    if (kv) {
+      try {
+        const cf2 = context.request.cf || {};
+        let hist = [];
+        try { hist = JSON.parse((await kv.get('parsehist_tiktok')) || '[]'); } catch {}
+        if (!Array.isArray(hist)) hist = [];
+        hist.unshift({
+          t: Date.now(),
+          ip: parseIp,
+          cc: String(cf2.country || 'XX').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'XX',
+          region: cf2.region || '',
+          city: cf2.city || '',
+        });
+        await kv.put('parsehist_tiktok', JSON.stringify(hist.slice(0, 20)));
+      } catch {}
+    }
     return json(obj);
   };
 
