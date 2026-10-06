@@ -124,6 +124,36 @@
   }
   footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 28px; line-height: 1.8; }
   footer a { color: var(--cyan); text-decoration: none; }
+  /* 反馈悬浮按钮 + 表单（深色） */
+  #fbBtn { position: fixed; right: 16px; bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 40;
+           width: 52px; height: 52px; border-radius: 50%; border: none; font-size: 22px; color: #fff;
+           background: linear-gradient(135deg, var(--pink), #ff5c7a);
+           box-shadow: 0 4px 14px rgba(254,44,85,.45); cursor: pointer; }
+  #fbBtn:active { transform: scale(.94); }
+  #fbWrap { display: none; position: fixed; inset: 0; z-index: 50; }
+  #fbWrap.show { display: block; }
+  #fbWrap .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.6); }
+  #fbWrap .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--card);
+                   border: 1px solid #2a2a32; border-bottom: none;
+                   border-radius: 18px 18px 0 0; padding: 18px 18px calc(20px + env(safe-area-inset-bottom));
+                   max-width: 520px; margin: 0 auto; }
+  #fbWrap .sheet h3 { font-size: 17px; margin-bottom: 6px; }
+  #fbWrap .sheet p { font-size: 13px; color: var(--muted); line-height: 1.7; margin-bottom: 12px; }
+  #fbWrap textarea { min-height: 100px; }
+  #fbWrap input[type=text] { width: 100%; background: #0c0c0f; border: 1px solid #2a2a32; border-radius: 12px;
+                             color: var(--text); font-size: 14px; padding: 12px; outline: none; margin-top: 10px; }
+  #fbWrap input[type=text]:focus { border-color: var(--pink); }
+  #fbWrap input[type=file] { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  #fbWrap .flabel { display: block; margin-top: 10px; font-size: 13px; color: var(--muted); }
+  #fbWrap .row { display: flex; gap: 10px; margin-top: 14px; }
+  #fbWrap .btn-ghost { flex: 1; }
+  #fbWrap .btn-ok { flex: 2; border: none; border-radius: 12px; font-size: 15px; font-weight: 600;
+                    padding: 13px 0; color: #fff; cursor: pointer;
+                    background: linear-gradient(135deg, var(--pink), #ff5c7a); }
+  #fbWrap .btn-ok:disabled { opacity: .5; }
+  #fbDone { display: none; text-align: center; padding: 20px 0 6px; }
+  #fbDone .big { font-size: 40px; }
+  #fbDone p { margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -340,7 +370,59 @@
     }
     result.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+  /* 反馈表单 */
+  $('fbBtn').onclick = function(){ $('fbWrap').classList.add('show'); $('fbDone').style.display = 'none'; };
+  $('fbBackdrop').onclick = function(){ $('fbWrap').classList.remove('show'); };
+  $('fbCancel').onclick = function(){ $('fbWrap').classList.remove('show'); };
+  $('fbSubmit').onclick = async function(){
+    const msg = $('fbMsg').value.trim();
+    if(!msg){ showError('请先填写反馈内容。'); return; }
+    const files = Array.from($('fbFiles').files || []);
+    if(files.length > 3){ showError('最多上传 3 个附件。'); return; }
+    for(const f of files){
+      if(!/^(image|video)\//.test(f.type || '')){ showError('只支持图片和视频附件。'); return; }
+      if(f.size > 20 * 1024 * 1024){ showError('单个附件不能超过 20MB。'); return; }
+    }
+    const btn = $('fbSubmit');
+    btn.disabled = true; btn.textContent = '提交中…';
+    try{
+      const fd = new FormData();
+      fd.append('message', msg);
+      fd.append('contact', $('fbContact').value.trim());
+      fd.append('page', location.href);
+      files.forEach(function(f){ fd.append('files', f, f.name); });
+      const r = await fetch('/api/feedback', { method: 'POST', body: fd });
+      const j = await r.json();
+      if(j.ok){
+        $('fbMsg').value = ''; $('fbContact').value = ''; $('fbFiles').value = '';
+        $('fbDone').style.display = 'block';
+        setTimeout(function(){ $('fbWrap').classList.remove('show'); }, 1600);
+      } else {
+        showError('反馈提交失败：' + (j.error || '请稍后重试'));
+      }
+    }catch(e){ showError('网络错误，请稍后重试。'); }
+    btn.disabled = false; btn.textContent = '提交反馈';
+  };
 })();
 </script>
+<!-- 反馈 -->
+<button id="fbBtn" title="问题反馈">💬</button>
+<div id="fbWrap">
+  <div class="backdrop" id="fbBackdrop"></div>
+  <div class="sheet" id="fbSheet">
+    <h3>问题反馈</h3>
+    <p>遇到解析失败、下载不了等问题？描述一下，可以附截图或录屏。</p>
+    <textarea id="fbMsg" placeholder="请描述你遇到的问题（比如：哪条链接解析失败、报了什么错）"></textarea>
+    <input type="text" id="fbContact" placeholder="联系方式（可选）" maxlength="120">
+    <label class="flabel" for="fbFiles">📎 截图/录屏（可选，最多3个，单个≤20MB）</label>
+    <input type="file" id="fbFiles" accept="image/*,video/*" multiple>
+    <div class="row">
+      <button class="btn btn-ghost" id="fbCancel">取消</button>
+      <button class="btn-ok" id="fbSubmit">提交反馈</button>
+    </div>
+    <div id="fbDone"><div class="big">✅</div><p>反馈已提交，谢谢！</p></div>
+  </div>
+</div>
+
 </body>
 </html>
