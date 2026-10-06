@@ -76,6 +76,16 @@ export async function onRequest(context) {
         await kv.put('stats_parse_tiktok', String(cur + 1));
       } catch {}
     }
+    // 解析者归属地分布（按站点+国家聚合）
+    if (kv) {
+      try {
+        const cf = context.request.cf || {};
+        const cc = String(cf.country || 'XX').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'XX';
+        const gk = 'geoparse_tiktok_' + cc;
+        const gc = Number((await kv.get(gk)) || 0);
+        await kv.put(gk, String(gc + 1));
+      } catch {}
+    }
     return json(obj);
   };
 
