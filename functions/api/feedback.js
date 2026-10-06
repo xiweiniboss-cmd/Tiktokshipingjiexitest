@@ -16,6 +16,21 @@ const checkAdminKey = (url, env) => {
   return !!key && url.searchParams.get('key') === key;
 };
 
+// Cloudflare Turnstile 人机验证：secret 配了才校验，不配则跳过（向后兼容）
+async function verifyTurnstile(token, secret, ip) {
+  try {
+    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token, remoteip: ip || '' }),
+    });
+    const j = await resp.json();
+    return j && j.success === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
   if (!env.FEEDBACK_KV) return json({ ok: false, error: '反馈功能暂未启用' }, 500);
@@ -23,6 +38,7 @@ export async function onRequestPost(context) {
   let message = '',
     contact = '',
     page = '',
+    tsToken = '',
     files = [];
   if (ct.includes('multipart/form-data')) {
     let form;
@@ -34,6 +50,7 @@ export async function onRequestPost(context) {
     message = String(form.get('message') || '').trim();
     contact = String(form.get('contact') || '').trim().slice(0, 120);
     page = String(form.get('page') || '').slice(0, 200);
+    tsToken = String(form.get('cf-turnstile-response') || '');
     files = form.getAll('files').filter((f) => f && typeof f !== 'string' && f.size > 0);
   } else {
     let body;
@@ -45,10 +62,19 @@ export async function onRequestPost(context) {
     message = String(body.message || '').trim();
     contact = String(body.contact || '').trim().slice(0, 120);
     page = String(body.page || '').slice(0, 200);
+    tsToken = String(body['cf-turnstile-response'] || '');
   }
   if (!message) return json({ ok: false, error: '请填写反馈内容' }, 400);
   if (message.length > 2000) return json({ ok: false, error: '内容太长，请精简到 2000 字以内' }, 400);
   if (files.length > 3) return json({ ok: false, error: '最多上传 3 个附件' }, 400);
+
+  // 人机验证（配了 TURNSTILE_SECRET_KEY 才生效）
+  const tsSecret = (env.TURNSTILE_SECRET_KEY || '').trim();
+  if (tsSecret) {
+    if (!tsToken) return json({ ok: false, error: '请先完成人机验证' }, 400);
+    const ok = await verifyTurnstile(tsToken, tsSecret, request.headers.get('cf-connecting-ip'));
+    if (!ok) return json({ ok: false, error: '人机验证未通过，请重试' }, 403);
+  }
 
   const id = 'fb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   const attachments = [];
