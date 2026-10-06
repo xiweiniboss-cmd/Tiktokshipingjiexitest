@@ -201,6 +201,25 @@
   </footer>
 </div>
 
+<!-- 反馈 -->
+<button id="fbBtn" title="问题反馈">💬</button>
+<div id="fbWrap">
+  <div class="backdrop" id="fbBackdrop"></div>
+  <div class="sheet" id="fbSheet">
+    <h3>问题反馈</h3>
+    <p>遇到解析失败、下载不了等问题？描述一下，可以附截图或录屏。</p>
+    <textarea id="fbMsg" placeholder="请描述你遇到的问题（比如：哪条链接解析失败、报了什么错）"></textarea>
+    <input type="text" id="fbContact" placeholder="联系方式（可选）" maxlength="120">
+    <label class="flabel" for="fbFiles">📎 截图/录屏（可选，最多3个，单个≤20MB）</label>
+    <input type="file" id="fbFiles" accept="image/*,video/*" multiple>
+    <div class="row">
+      <button class="btn btn-ghost" id="fbCancel">取消</button>
+      <button class="btn-ok" id="fbSubmit">提交反馈</button>
+    </div>
+    <div id="fbDone"><div class="big">✅</div><p>反馈已提交，谢谢！</p></div>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -405,24 +424,7 @@
   };
 })();
 </script>
-<!-- 反馈 -->
-<button id="fbBtn" title="问题反馈">💬</button>
-<div id="fbWrap">
-  <div class="backdrop" id="fbBackdrop"></div>
-  <div class="sheet" id="fbSheet">
-    <h3>问题反馈</h3>
-    <p>遇到解析失败、下载不了等问题？描述一下，可以附截图或录屏。</p>
-    <textarea id="fbMsg" placeholder="请描述你遇到的问题（比如：哪条链接解析失败、报了什么错）"></textarea>
-    <input type="text" id="fbContact" placeholder="联系方式（可选）" maxlength="120">
-    <label class="flabel" for="fbFiles">📎 截图/录屏（可选，最多3个，单个≤20MB）</label>
-    <input type="file" id="fbFiles" accept="image/*,video/*" multiple>
-    <div class="row">
-      <button class="btn btn-ghost" id="fbCancel">取消</button>
-      <button class="btn-ok" id="fbSubmit">提交反馈</button>
-    </div>
-    <div id="fbDone"><div class="big">✅</div><p>反馈已提交，谢谢！</p></div>
-  </div>
-</div>
+
 
 </body>
 </html>
