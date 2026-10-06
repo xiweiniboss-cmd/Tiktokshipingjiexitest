@@ -61,6 +61,16 @@ export async function onRequest(context) {
       if (remain > 0) return json({ code: -1, msg: `解析太频繁，请 ${remain} 秒后再试` }, 429);
     }
   }
+  // 每日解析限额：同一 IP 每天最多 20 次（防刷 API 烧积分），按北京时间算天
+  const DAILY_LIMIT = 20;
+  const bjDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  const quotaKey = 'dlimit_tiktok_' + parseIp + '_' + bjDate;
+  let usedToday = 0;
+  if (parseIp && kv) {
+    try { usedToday = Number((await kv.get(quotaKey)) || 0); } catch {}
+    if (usedToday >= DAILY_LIMIT)
+      return json({ code: -1, msg: '今日解析次数已用完（20 次），明天再来吧' }, 429);
+  }
   const succeed = async (obj) => {
     if (parseIp && kv) {
       try {
@@ -74,6 +84,12 @@ export async function onRequest(context) {
       try {
         const cur = Number((await kv.get('stats_parse_tiktok')) || 0);
         await kv.put('stats_parse_tiktok', String(cur + 1));
+      } catch {}
+    }
+    // 每日限额计数（仅成功计数，48小时过期）
+    if (parseIp && kv) {
+      try {
+        await kv.put(quotaKey, String(usedToday + 1), { expirationTtl: 172800 });
       } catch {}
     }
     // 解析者归属地分布（按站点+国家聚合）
