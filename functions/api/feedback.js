@@ -120,6 +120,11 @@ export async function onRequestPost(context) {
     attachments,
     ua: (request.headers.get('user-agent') || '').slice(0, 200),
     ip: request.headers.get('cf-connecting-ip') || '',
+    geo: {
+      country: (request.cf && request.cf.country) || '',
+      region: (request.cf && request.cf.region) || '',
+      city: (request.cf && request.cf.city) || '',
+    },
     time: new Date().toISOString(),
   };
   await env.FEEDBACK_KV.put(id, JSON.stringify(record));
