@@ -17,6 +17,8 @@ h1{font-size:20px;margin:8px 0 4px}h1 span{font-size:13px;color:#9a9aa3;font-wei
 </style></head>
 <body><div class="wrap">
 <h1>用户反馈 <span id="count"></span></h1>
+<div style="margin:6px 0 4px"><a href="/dashboard?key=" id="dashLink" style="font-size:13px;color:#FE2C55">📊 数据总览</a></div>
+<script>document.getElementById('dashLink').href = '/dashboard?key=' + encodeURIComponent(new URLSearchParams(location.search).get('key') || '');</script>
 <div id="list">加载中…</div>
 </div><script>
 const key = new URLSearchParams(location.search).get('key') || '';
