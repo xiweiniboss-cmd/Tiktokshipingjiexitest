@@ -170,6 +170,7 @@
       <button class="btn btn-ghost" id="clearBtn">🗑 清空</button>
     </div>
     <button class="btn btn-main" id="parseBtn">⚡ 解析下载</button>
+    <div id="tsParseWidget" style="margin-top:10px"></div>
   </div>
 
   <div id="loading"><div class="spinner"></div>正在解析，请稍候…</div>
@@ -319,11 +320,18 @@
       showError('链接看起来不像 TikTok 分享链接，请检查后重试。');
       return;
     }
+    var tsToken = '';
+    if (tsParseWidgetId !== null) {
+      tsToken = turnstile.getResponse(tsParseWidgetId) || '';
+      if (!tsToken) { showError('请先完成人机验证。'); return; }
+    }
     loading.style.display = 'block';
     result.style.display = 'none';
     setParseBtn('解析中…', true);
 
-    fetch(API + encodeURIComponent(url))
+    var apiUrl = API + encodeURIComponent(url);
+    if (tsToken) apiUrl += '&turnstile=' + encodeURIComponent(tsToken);
+    fetch(apiUrl)
       .then(function(r){
         return r.text().then(function(t){
           var j;
@@ -341,8 +349,25 @@
       .catch(function(e){
         loading.style.display = 'none';
         showError('解析失败：' + (e.message || '网络错误') + '<br>请确认链接有效，或稍后重试。');
+      })
+      .finally(function(){
+        if (tsParseWidgetId !== null) { try { turnstile.reset(tsParseWidgetId); } catch(e){} }
       });
   };
+  /* 解析区 Turnstile（页面加载时渲染；没配 key 则不显示，直接解析） */
+  var tsParseWidgetId = null;
+  (function loadParseTurnstile(){
+    fetch('/api/turnstile-key').then(function(r){ return r.json(); }).then(function(j){
+      if (!j.siteKey) return;
+      var s = document.createElement('script');
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+      s.async = true; s.defer = true;
+      s.onload = function(){
+        tsParseWidgetId = turnstile.render('#tsParseWidget', { sitekey: j.siteKey, theme: 'dark', language: 'zh-cn' });
+      };
+      document.head.appendChild(s);
+    }).catch(function(){});
+  })();
 
   function renderResult(d){
     result.style.display = 'block';

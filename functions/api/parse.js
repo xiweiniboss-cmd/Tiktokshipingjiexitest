@@ -7,6 +7,21 @@ const MOBILE_UA =
 
 const RAPID_HOST = 'tiktok-api23.p.rapidapi.com';
 
+// Cloudflare Turnstile 人机验证：secret 配了才校验，不配则跳过（向后兼容）
+async function verifyTurnstile(token, secret, ip) {
+  try {
+    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token, remoteip: ip || '' }),
+    });
+    const j = await resp.json();
+    return j && j.success === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function onRequest(context) {
   const target = new URL(context.request.url).searchParams.get('url');
   const env = context.env || {};
@@ -24,6 +39,15 @@ export async function onRequest(context) {
   if (!target) return json({ code: -1, msg: 'missing url param' }, 400);
   if (!/tiktok\.com|vt\.tiktok|vm\.tiktok|tiktokv\.com/i.test(target)) {
     return json({ code: -1, msg: '链接看起来不像 TikTok 分享链接' }, 400);
+  }
+
+  // 解析接口人机验证（配了 TURNSTILE_SECRET_KEY 才生效）
+  const tsSecret = (env.TURNSTILE_SECRET_KEY || '').trim();
+  if (tsSecret) {
+    const tsToken = new URL(context.request.url).searchParams.get('turnstile') || '';
+    if (!tsToken) return json({ code: -1, msg: '请先完成人机验证' }, 400);
+    const tsOk = await verifyTurnstile(tsToken, tsSecret, context.request.headers.get('cf-connecting-ip'));
+    if (!tsOk) return json({ code: -1, msg: '人机验证未通过，请重试' }, 403);
   }
 
   // 解析冷却：同一 IP 60 秒内只能解析一次（防刷 API 额度）
