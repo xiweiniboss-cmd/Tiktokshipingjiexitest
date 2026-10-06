@@ -2,13 +2,16 @@
 export async function onRequestGet(context) {
   const { request, env } = context;
   const DAILY_LIMIT = 20;
+  const reqUrl = new URL(request.url);
   const ip = request.headers.get('cf-connecting-ip') || '';
+  const deviceId = reqUrl.searchParams.get('deviceId') || '';
+  const quotaId = deviceId || ip;
   const bjDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   let used = 0;
   const kv = env.FEEDBACK_KV;
-  if (ip && kv) {
+  if (quotaId && kv) {
     try {
-      used = Number((await kv.get('dlimit_' + ip + '_' + bjDate)) || 0);
+      used = Number((await kv.get('dlimit_' + quotaId + '_' + bjDate)) || 0);
     } catch {}
   }
   return new Response(

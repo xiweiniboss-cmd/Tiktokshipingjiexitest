@@ -61,10 +61,13 @@ export async function onRequest(context) {
       if (remain > 0) return json({ code: -1, msg: `解析太频繁，请 ${remain} 秒后再试` }, 429);
     }
   }
-  // 每日解析限额：同一 IP 每天最多 20 次（防刷 API 烧积分），按北京时间算天
+  // 每日解析限额：同一设备每天最多 20 次（防换 IP 刷 API 烧积分），按北京时间算天
   const DAILY_LIMIT = 20;
   const bjDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-  const quotaKey = 'dlimit_' + parseIp + '_' + bjDate;
+  const reqUrl = new URL(context.request.url);
+  const deviceId = reqUrl.searchParams.get('deviceId') || '';
+  const quotaId = deviceId || parseIp;
+  const quotaKey = 'dlimit_' + quotaId + '_' + bjDate;
   let usedToday = 0;
   if (parseIp && kv) {
     try { usedToday = Number((await kv.get(quotaKey)) || 0); } catch {}

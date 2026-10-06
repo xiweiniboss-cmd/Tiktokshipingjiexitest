@@ -227,6 +227,18 @@
 (function(){
   "use strict";
   var $ = function(id){ return document.getElementById(id); };
+// 设备ID（防换IP刷次数）：首次访问生成，存 localStorage
+var deviceId = (function(){
+  try {
+    var id = localStorage.getItem('device_id');
+    if (!id) {
+      id = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem('device_id', id);
+    }
+    return id;
+  } catch(e){ return ''; }
+})();
+
   var urlInput = $('urlInput'), parseBtn = $('parseBtn'),
       loading = $('loading'), errorMsg = $('errorMsg'), result = $('result');
 
@@ -331,6 +343,7 @@
     setParseBtn('解析中…', true);
 
     var apiUrl = API + encodeURIComponent(url);
+    if (typeof deviceId !== 'undefined' && deviceId) apiUrl += '&deviceId=' + encodeURIComponent(deviceId);
     if (tsToken) apiUrl += '&turnstile=' + encodeURIComponent(tsToken);
     fetch(apiUrl)
       .then(function(r){
@@ -488,7 +501,7 @@
 function refreshQuota(){
   var el = document.getElementById('quotaCount');
   if (!el) return;
-  fetch('/api/parse-quota').then(function(r){ return r.json(); }).then(function(j){
+  fetch('/api/parse-quota?deviceId=' + encodeURIComponent(deviceId)).then(function(r){ return r.json(); }).then(function(j){
     if (j && j.ok && typeof j.remaining === 'number') el.textContent = j.remaining;
   }).catch(function(){});
 }
