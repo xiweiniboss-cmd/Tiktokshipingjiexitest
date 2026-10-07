@@ -9,13 +9,13 @@ export async function onRequestGet(context) {
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
     });
   const byCountry = {};
-  const bySite = { tiktok: {}, xhs: {}, douyin: {}, youtube: {} };
+  const bySite = { tiktok: {}, xhs: {}, douyin: {}, youtube: {}, bilibili: {} };
   const kv = env.FEEDBACK_KV;
   if (kv) {
     try {
       const listed = await kv.list({ prefix: 'geoparse_' });
       for (const k of listed.keys) {
-        const m = k.name.match(/^geoparse_(tiktok|xhs|douyin|youtube)_([A-Z]{2})$/);
+        const m = k.name.match(/^geoparse_(tiktok|xhs|douyin|youtube|bilibili)_([A-Z]{2})$/);
         if (!m) continue;
         const n = Number((await kv.get(k.name)) || 0);
         if (!n) continue;

@@ -35,7 +35,7 @@ h2{font-size:16px;margin:24px 0 12px;color:#f1f1f3}
 </style></head>
 <body><div class="wrap">
 <h1>📊 数据总览 <span id="time"></span></h1>
-<div class="sub">四站解析次数统计（仅成功计数）</div>
+<div class="sub">五站解析次数统计（仅成功计数）</div>
 <div class="grid" id="grid"><div class="err">加载中…</div></div>
 <div class="total" id="total" style="display:none"><div class="num" id="totalNum">0</div><div class="label">累计解析</div></div>
 

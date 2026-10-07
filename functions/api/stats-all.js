@@ -13,6 +13,7 @@ export async function onRequestGet(context) {
     { key: 'stats_parse_xhs', name: '小红书站' },
     { key: 'stats_parse_douyin', name: '抖音站' },
     { key: 'stats_parse_youtube', name: 'YouTube站' },
+    { key: 'stats_parse_bilibili', name: 'B站站' },
   ];
   const kv = env.FEEDBACK_KV;
   const result = [];

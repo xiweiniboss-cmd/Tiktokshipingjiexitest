@@ -8,7 +8,7 @@ export async function onRequestGet(context) {
       status: 403,
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
     });
-  const siteNames = { tiktok: 'TikTok站', xhs: '小红书站', douyin: '抖音站', youtube: 'YouTube站' };
+  const siteNames = { tiktok: 'TikTok站', xhs: '小红书站', douyin: '抖音站', youtube: 'YouTube站', bilibili: 'B站站' };
   const kv = env.FEEDBACK_KV;
   const all = [];
   if (kv) {
