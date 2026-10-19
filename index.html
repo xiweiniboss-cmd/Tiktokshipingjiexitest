@@ -70,6 +70,10 @@
     box-shadow: 0 4px 18px rgba(254,44,85,.35);
   }
   .btn-main:disabled { opacity: .5; box-shadow: none; }
+  .dlprog{ display:none; margin-top:12px; }
+  .dlprog .track{ height:10px; border-radius:6px; background:#2a2a34; overflow:hidden; }
+  .dlprog .bar{ height:100%; width:0%; border-radius:6px; background:linear-gradient(90deg,var(--pink),var(--cyan)); transition:width .15s; }
+  .dlprog .txt{ margin-top:6px; font-size:12px; color:var(--muted); text-align:center; }
   .btn-dl {
     width: 100%;
     margin-top: 10px;
@@ -186,6 +190,10 @@
     </div>
     <div id="videoBtns" style="display:none">
       <button class="btn btn-dl" id="dlBtn">⬇ 下载无水印视频</button>
+      <div class="dlprog" id="dlProg">
+        <div class="track"><div class="bar" id="dlProgBar"></div></div>
+        <div class="txt" id="dlProgTxt">准备下载…</div>
+      </div>
       <button class="btn btn-dl hd" id="dlHdBtn" style="display:none">⬇ 下载高清视频</button>
       <div class="row">
         <button class="btn btn-sub" id="coverBtn">🖼 封面</button>
@@ -269,6 +277,59 @@ var deviceId = (function(){
   // —— 下载核心：手机直连 TikTok（住宅 IP 不会被拦），多地址依次尝试 ——
   // 第1层：fetch + Web Share（一键分享保存，最顺滑）
   // 失败则高亮预览视频，引导长按保存（iOS 系统级能力，一定可用）
+  function fetchBlobProgress(url, onProgress, fetchOpts){
+    return fetch(url, fetchOpts || {}).then(function(res){
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      var total = parseInt(res.headers.get('Content-Length') || '0', 10) || 0;
+      var ctype = res.headers.get('Content-Type') || 'video/mp4';
+      if(!res.body || !res.body.getReader) return res.blob();
+      var reader = res.body.getReader();
+      var chunks = [];
+      var received = 0;
+      onProgress(0, total);
+      function pump(){
+        return reader.read().then(function(r){
+          if(r.done){
+            try{ reader.releaseLock(); }catch(e){}
+            return new Blob(chunks, { type: ctype });
+          }
+          chunks.push(r.value);
+          received += r.value.byteLength || r.value.length || 0;
+          onProgress(received, total);
+          return pump();
+        });
+      }
+      return pump();
+    });
+  }
+  function fmtMB(b){ return (b/1048576).toFixed(1) + ' MB'; }
+  function setDlProg(received, total){
+    var wrap = document.getElementById('dlProg');
+    if(!wrap) return;
+    var bar = document.getElementById('dlProgBar');
+    var txt = document.getElementById('dlProgTxt');
+    wrap.style.display = 'block';
+    if(total > 0){
+      var pct = Math.min(100, Math.round(received / total * 100));
+      bar.style.width = pct + '%';
+      bar.style.opacity = '';
+      txt.textContent = '下载中 ' + pct + '%（' + fmtMB(received) + ' / ' + fmtMB(total) + '）';
+    }else{
+      bar.style.width = '100%';
+      bar.style.opacity = '.4';
+      txt.textContent = '下载中，已接收 ' + fmtMB(received) + '…';
+    }
+  }
+  function resetDlProg(){
+    var wrap = document.getElementById('dlProg');
+    if(!wrap) return;
+    document.getElementById('dlProgBar').style.width = '0%';
+    document.getElementById('dlProgBar').style.opacity = '';
+    document.getElementById('dlProgTxt').textContent = '准备下载…';
+    wrap.style.display = 'block';
+  }
+  function hideDlProg(){ var w = document.getElementById('dlProg'); if(w) w.style.display = 'none'; }
+
   function downloadFile(url, filename, altUrls){
     var urls = [url].concat(altUrls || []);
     var idx = 0;
@@ -290,10 +351,9 @@ var deviceId = (function(){
       }
       var u = urls[idx++];
       var shortUrl = u.length > 60 ? u.substring(0, 60) + '...' : u;
-      fetch(u, { referrerPolicy: 'no-referrer' }).then(function(res){
-        if(!res.ok) throw new Error('HTTP ' + res.status);
-        return res.blob();
-      }).then(function(blob){
+      resetDlProg();
+      fetchBlobProgress(u, setDlProg, { referrerPolicy: 'no-referrer' }).then(function(blob){
+        hideDlProg();
         var file = new File([blob], filename, { type: blob.type || 'video/mp4' });
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           resetParseBtn();
@@ -305,7 +365,9 @@ var deviceId = (function(){
         document.body.appendChild(a); a.click();
         setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(objUrl); }, 4000);
         resetParseBtn();
+        hideDlProg();
       }).catch(function(e){
+        hideDlProg();
         errLog.push('地址' + idx + ' (' + shortUrl + '): ' + (e.message || '网络错误'));
         tryNext(); // 这个地址不行，试下一个
       });
@@ -502,7 +564,10 @@ function refreshQuota(){
   var el = document.getElementById('quotaCount');
   if (!el) return;
   var qurl = '/api/parse-quota';
-  try { if (typeof deviceId !== 'undefined' && deviceId) qurl += '?deviceId=' + encodeURIComponent(deviceId); } catch(e){}
+  try {
+    var did = localStorage.getItem('device_id');
+    if (did) qurl += '?deviceId=' + encodeURIComponent(did);
+  } catch(e){}
   fetch(qurl).then(function(r){ return r.json(); }).then(function(j){
     if (j && j.ok && typeof j.remaining === 'number') el.textContent = j.remaining;
   }).catch(function(){});
