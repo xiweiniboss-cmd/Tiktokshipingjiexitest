@@ -401,8 +401,6 @@ button {
 
 #parseBtn.is-release { animation: none; }
 
-#tsParseWidget:not(:empty),
-#tsWidget:not(:empty) { margin-top: var(--jx-space-4); }
 
 .hint {
   margin: var(--jx-space-3) 0 0;
