@@ -82,7 +82,6 @@
           </div>
         </div>
         <button type="button" class="btn" id="parseBtn">开始解析</button>
-        <div id="tsParseWidget"></div>
         <p class="hint">在 TikTok App 点「分享」，再点「Copy link」或「复制链接」，把整段文字粘到这里</p>
       </div>
     </div>
@@ -186,7 +185,6 @@
     <input type="text" id="fbContact" placeholder="联系方式，选填" maxlength="120">
     <label class="flabel" for="fbFiles">截图或录屏，选填，最多 3 个，每个不超过 20MB</label>
     <input type="file" id="fbFiles" accept="image/*,video/*" multiple>
-    <div id="tsWidget"></div>
     <div class="row">
       <button type="button" class="btn-ghost" id="fbCancel">取消</button>
       <button type="button" class="btn-ok" id="fbSubmit">提交反馈</button>
@@ -392,18 +390,12 @@ var deviceId = (function(){
       showError('链接看起来不像 TikTok 分享链接，请检查后重试。');
       return;
     }
-    var tsToken = '';
-    if (tsParseWidgetId !== null) {
-      tsToken = turnstile.getResponse(tsParseWidgetId) || '';
-      if (!tsToken) { showError('请先完成人机验证。'); return; }
-    }
     loading.style.display = 'block';
     result.style.display = 'none';
     setParseBtn('解析中…', true);
 
     var apiUrl = API + encodeURIComponent(url);
     if (typeof deviceId !== 'undefined' && deviceId) apiUrl += '&deviceId=' + encodeURIComponent(deviceId);
-    if (tsToken) apiUrl += '&turnstile=' + encodeURIComponent(tsToken);
     fetch(apiUrl)
       .then(function(r){
         return r.text().then(function(t){
@@ -430,29 +422,12 @@ var deviceId = (function(){
       .catch(function(e){
         loading.style.display = 'none';
         showError('解析失败：' + (e.message || '网络错误') + '<br>请确认链接有效，或稍后重试。');
-      })
-      .finally(function(){
-        if (tsParseWidgetId !== null) { try { turnstile.reset(tsParseWidgetId); } catch(e){} }
       });
   };
-  /* 解析区 Turnstile（页面加载时渲染；没配 key 则不显示，直接解析） */
-  var tsParseWidgetId = null;
   /* 本站解析次数 */
   fetch('/api/stats').then(function(r){ return r.json(); }).then(function(j){
     if (j.ok && typeof j.parseCount === 'number') $('parseCount').textContent = j.parseCount;
   }).catch(function(){});
-  (function loadParseTurnstile(){
-    fetch('/api/turnstile-key').then(function(r){ return r.json(); }).then(function(j){
-      if (!j.siteKey) return;
-      var s = document.createElement('script');
-      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-      s.async = true; s.defer = true;
-      s.onload = function(){
-        tsParseWidgetId = turnstile.render('#tsParseWidget', { sitekey: j.siteKey, theme: 'dark', language: 'zh-cn' });
-      };
-      document.head.appendChild(s);
-    }).catch(function(){});
-  })();
 
   function renderResult(d){
     result.style.display = 'block';
@@ -501,22 +476,7 @@ var deviceId = (function(){
     result.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
   /* 反馈表单 */
-  var tsWidgetId = null; // Turnstile 组件 id（没配 key 时为 null，直接提交）
-  function loadTurnstile(){
-    if (tsWidgetId !== null || window.turnstileLoading) return;
-    window.turnstileLoading = true;
-    fetch('/api/turnstile-key').then(function(r){ return r.json(); }).then(function(j){
-      if (!j.siteKey) return;
-      var s = document.createElement('script');
-      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-      s.async = true; s.defer = true;
-      s.onload = function(){
-        tsWidgetId = turnstile.render('#tsWidget', { sitekey: j.siteKey, theme: 'dark', language: 'zh-cn' });
-      };
-      document.head.appendChild(s);
-    }).catch(function(){});
-  }
-  $('fbBtn').onclick = function(){ $('fbWrap').classList.add('show'); $('fbDone').style.display = 'none'; loadTurnstile(); };
+  $('fbBtn').onclick = function(){ $('fbWrap').classList.add('show'); $('fbDone').style.display = 'none'; };
   $('fbBackdrop').onclick = function(){ $('fbWrap').classList.remove('show'); };
   $('fbCancel').onclick = function(){ $('fbWrap').classList.remove('show'); };
   $('fbSubmit').onclick = async function(){
@@ -528,11 +488,6 @@ var deviceId = (function(){
       if(!/^(image|video)\//.test(f.type || '')){ showError('只支持图片和视频附件。'); return; }
       if(f.size > 20 * 1024 * 1024){ showError('单个附件不能超过 20MB。'); return; }
     }
-    let tsToken = '';
-    if (tsWidgetId !== null) {
-      tsToken = turnstile.getResponse(tsWidgetId) || '';
-      if (!tsToken) { showError('请先完成人机验证。'); return; }
-    }
     const btn = $('fbSubmit');
     btn.disabled = true; btn.textContent = '提交中…';
     try{
@@ -540,7 +495,6 @@ var deviceId = (function(){
       fd.append('message', msg);
       fd.append('contact', $('fbContact').value.trim());
       fd.append('page', location.href);
-      if (tsToken) fd.append('cf-turnstile-response', tsToken);
       files.forEach(function(f){ fd.append('files', f, f.name); });
       const r = await fetch('/api/feedback', { method: 'POST', body: fd });
       const j = await r.json();
@@ -552,7 +506,6 @@ var deviceId = (function(){
         showError('反馈提交失败：' + (j.error || '请稍后重试'));
       }
     }catch(e){ showError('网络错误，请稍后重试。'); }
-    if (tsWidgetId !== null) { try { turnstile.reset(tsWidgetId); } catch(e){} }
     btn.disabled = false; btn.textContent = '提交反馈';
   };
 })();
