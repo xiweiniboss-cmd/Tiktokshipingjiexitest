@@ -1,0 +1,8 @@
+Copyright 2014-2021 Adobe, with Reserved Font Name 'Source'.
+Noto Serif SC, as distributed by Google Fonts. This package includes a subset
+of weight 500 used only for the headline 「保存无水印的 TikTok 视频」
+(U+0020, U+0054, U+0069, U+006B, U+006F, U+4FDD, U+5370, U+5B58, U+65E0, U+6C34, U+7684, U+89C6, U+9891).
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+The full license text is in OFL.txt in this directory.
+https://scripts.sil.org/OFL
