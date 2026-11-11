@@ -7,6 +7,31 @@ const MOBILE_UA =
 
 const RAPID_HOST = 'tiktok-api23.p.rapidapi.com';
 
+// 只认 TikTok 自家域名（解析 hostname 后精确后缀匹配）
+const TIKTOK_PAGE_HOSTS = ['tiktok.com', 'tiktokv.com'];
+function isTikTokUrl(u) {
+  try {
+    const x = new URL(u);
+    const h = x.hostname.toLowerCase().replace(/\.$/, '');
+    return (x.protocol === 'https:' || x.protocol === 'http:') && TIKTOK_PAGE_HOSTS.some((d) => h === d || h.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
+async function verifyTurnstile(token, secret, ip) {
+  try {
+    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token, remoteip: ip || '' }),
+    });
+    const j = await resp.json();
+    return j && j.success === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function onRequest(context) {
   const target = new URL(context.request.url).searchParams.get('url');
   const env = context.env || {};
@@ -21,9 +46,18 @@ export async function onRequest(context) {
       },
     });
 
-  if (!target) return json({ code: -1, msg: 'missing url param' }, 400);
-  if (!/tiktok\.com|vt\.tiktok|vm\.tiktok|tiktokv\.com/i.test(target)) {
+  if (!target) return json({ code: -1, msg: '请先粘贴 TikTok 分享链接' }, 400);
+  if (!isTikTokUrl(target)) {
     return json({ code: -1, msg: '链接看起来不像 TikTok 分享链接' }, 400);
+  }
+
+  // 人机验证：配了 TURNSTILE_SECRET_KEY 才校验
+  const tsSecret = String(env.TURNSTILE_SECRET_KEY || '').trim();
+  if (tsSecret) {
+    const tsToken = new URL(context.request.url).searchParams.get('turnstile') || '';
+    if (!tsToken) return json({ code: -1, msg: '请先完成人机验证' }, 400);
+    const ok = await verifyTurnstile(tsToken, tsSecret, context.request.headers.get('cf-connecting-ip') || '');
+    if (!ok) return json({ code: -1, msg: '人机验证未通过，请重试' }, 403);
   }
 
   // 解析冷却：同一 IP 60 秒内只能解析一次（防刷 API 额度）
@@ -31,7 +65,7 @@ export async function onRequest(context) {
   const parseIp = context.request.headers.get('cf-connecting-ip') || '';
   const kv = env.FEEDBACK_KV;
   if (parseIp && kv) {
-    const lastTs = await kv.get('pcool_' + parseIp);
+    const lastTs = await kv.get('pcool_tiktok_' + parseIp);
     if (lastTs) {
       const remain = PARSE_COOLDOWN_SECS - Math.floor((Date.now() - Number(lastTs)) / 1000);
       if (remain > 0) return json({ code: -1, msg: `解析太频繁，请 ${remain} 秒后再试` }, 429);
@@ -43,7 +77,7 @@ export async function onRequest(context) {
   const reqUrl = new URL(context.request.url);
   const deviceId = reqUrl.searchParams.get('deviceId') || '';
   const quotaId = deviceId || parseIp;
-  const quotaKey = 'dlimit_' + quotaId + '_' + bjDate;
+  const quotaKey = 'dlimit_tiktok_' + quotaId + '_' + bjDate;
   let usedToday = 0;
   if (parseIp && kv) {
     try { usedToday = Number((await kv.get(quotaKey)) || 0); } catch {}
@@ -53,7 +87,7 @@ export async function onRequest(context) {
   const succeed = async (obj) => {
     if (parseIp && kv) {
       try {
-        await kv.put('pcool_' + parseIp, String(Date.now()), {
+        await kv.put('pcool_tiktok_' + parseIp, String(Date.now()), {
           expirationTtl: PARSE_COOLDOWN_SECS,
         });
       } catch {}
@@ -129,7 +163,8 @@ export async function onRequest(context) {
           return succeed(tw);
         }
         if (tw && /parsing is failed|invalid/i.test(tw.msg || '')) {
-          return json(tw);
+          // 不再原样透传上游 msg（上游文本不可信），给固定中文提示
+          return json({ code: -1, msg: '解析失败：链接无效，或视频已删除/设为私密' });
         }
       } catch (e) {}
       if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
@@ -166,6 +201,7 @@ async function resolveVideoId(shareUrl) {
       signal: ctrl.signal,
     });
     const loc = r.headers.get('location') || r.headers.get('Location') || '';
+    if (loc && !isTikTokUrl(new URL(loc, shareUrl).toString())) return null;
     m = loc.match(/\/(video|photo)\/(\d+)/);
     if (m) return m[2];
     // 有些短链返回 200 + JS 跳转，尝试从 body 找

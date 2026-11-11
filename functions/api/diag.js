@@ -29,6 +29,13 @@ async function timedFetch(url, opts, timeoutMs) {
 }
 
 export async function onRequest(context) {
+  // 诊断接口只给管理员（以前任何人都能让它拿任意地址去打 TikWM）
+  {
+    const env0 = context.env || {};
+    const k = env0.FEEDBACK_ADMIN_KEY || '';
+    if (!k || new URL(context.request.url).searchParams.get('key') !== k)
+      return new Response(JSON.stringify({ ok: false, error: '无权访问' }), { status: 403, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+  }
   const target = new URL(context.request.url).searchParams.get('url') || '';
   const H = {
     headers: {

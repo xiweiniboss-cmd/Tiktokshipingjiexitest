@@ -38,6 +38,8 @@ const siteName = (p) => {
     if (h.includes('douyin')) return '抖音站';
     if (h.includes('youtube')) return 'YouTube站';
     if (h.includes('bilibili')) return 'B站站';
+    if (h.includes('kuaishou')) return '快手站';
+    if (h.includes('weibo')) return '微博站';
     if (h.includes('DeepSeek')) return 'DeepSeek站';
     return h;
   } catch { return ''; }

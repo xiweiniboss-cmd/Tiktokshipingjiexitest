@@ -11,6 +11,20 @@ const json = (obj, status) =>
     },
   });
 
+async function verifyTurnstile(token, secret, ip) {
+  try {
+    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token, remoteip: ip || '' }),
+    });
+    const j = await resp.json();
+    return j && j.success === true;
+  } catch {
+    return false;
+  }
+}
+
 const checkAdminKey = (url, env) => {
   const key = env.FEEDBACK_ADMIN_KEY || '';
   return !!key && url.searchParams.get('key') === key;
@@ -24,6 +38,7 @@ export async function onRequestPost(context) {
     contact = '',
     page = '',
     files = [];
+  let tsToken = '';
   if (ct.includes('multipart/form-data')) {
     let form;
     try {
@@ -34,6 +49,7 @@ export async function onRequestPost(context) {
     message = String(form.get('message') || '').trim();
     contact = String(form.get('contact') || '').trim().slice(0, 120);
     page = String(form.get('page') || '').slice(0, 200);
+    tsToken = String(form.get('cf-turnstile-response') || '');
     files = form.getAll('files').filter((f) => f && typeof f !== 'string' && f.size > 0);
   } else {
     let body;
@@ -45,16 +61,25 @@ export async function onRequestPost(context) {
     message = String(body.message || '').trim();
     contact = String(body.contact || '').trim().slice(0, 120);
     page = String(body.page || '').slice(0, 200);
+    tsToken = String(body['cf-turnstile-response'] || '');
   }
   if (!message) return json({ ok: false, error: '请填写反馈内容' }, 400);
   if (message.length > 2000) return json({ ok: false, error: '内容太长，请精简到 2000 字以内' }, 400);
   if (files.length > 3) return json({ ok: false, error: '最多上传 3 个附件' }, 400);
 
+  // 人机验证：配了 TURNSTILE_SECRET_KEY 才校验
+  const tsSecret = String(env.TURNSTILE_SECRET_KEY || '').trim();
+  if (tsSecret) {
+    if (!tsToken) return json({ ok: false, error: '请先完成人机验证' }, 400);
+    if (!(await verifyTurnstile(tsToken, tsSecret, request.headers.get('cf-connecting-ip') || '')))
+      return json({ ok: false, error: '人机验证未通过，请重试' }, 403);
+  }
+
   // 提交冷却：同一 IP 10 分钟内只能提交一次（KV 自动过期）
   const COOLDOWN_SECS = 600;
   const clientIp = request.headers.get('cf-connecting-ip') || '';
   if (clientIp) {
-    const lastTs = await env.FEEDBACK_KV.get('cool_' + clientIp);
+    const lastTs = await env.FEEDBACK_KV.get('cool_tiktok_' + clientIp);
     if (lastTs) {
       const remain = COOLDOWN_SECS - Math.floor((Date.now() - Number(lastTs)) / 1000);
       if (remain > 0)
@@ -104,7 +129,7 @@ export async function onRequestPost(context) {
   await env.FEEDBACK_KV.put(id, JSON.stringify(record));
   // 写入冷却时间戳（10 分钟后自动过期；键前缀 cool_ 不与 fb_ 反馈键冲突）
   if (clientIp)
-    await env.FEEDBACK_KV.put('cool_' + clientIp, String(Date.now()), {
+    await env.FEEDBACK_KV.put('cool_tiktok_' + clientIp, String(Date.now()), {
       expirationTtl: COOLDOWN_SECS,
     });
   return json({ ok: true });
@@ -118,7 +143,7 @@ export async function onRequestDelete(context) {
   const id = url.searchParams.get('id') || '';
   if (!/^fb_[a-z0-9_]+$/i.test(id)) return json({ ok: false, error: '参数错误' }, 400);
   try {
-    const v = await env.FEEDBACK_KV.get(id);
+    const v = (await env.FEEDBACK_KV.get(id)) || (await env.FEEDBACK_KV.get('feedback_' + id));
     if (v) {
       const rec = JSON.parse(v);
       if (env.FEEDBACK_BUCKET && Array.isArray(rec.attachments)) {
@@ -135,5 +160,6 @@ export async function onRequestDelete(context) {
     /* ignore */
   }
   await env.FEEDBACK_KV.delete(id);
+  await env.FEEDBACK_KV.delete('feedback_' + id); // 快手旧版记录
   return json({ ok: true });
 }

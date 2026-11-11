@@ -2,9 +2,21 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>TikTok 无水印下载</title>
+<meta name="description" content="粘贴 TikTok 分享链接，解析公开视频和图集，去掉水印后保存到这台设备。">
+<meta name="theme-color" content="#141415">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23141415'/%3E%3Cpath d='M14 24V14h10M40 14h10v10M50 40v10H40M24 50H14V40' fill='none' stroke='%2325F4EE' stroke-width='4'/%3E%3Cpath d='M27 22v20l16-10z' fill='%2325F4EE'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TikTok 无水印下载">
+<meta property="og:title" content="TikTok 无水印下载">
+<meta property="og:description" content="粘贴 TikTok 分享链接，解析公开视频和图集，去掉水印后保存到这台设备。">
+<meta property="og:url" content="https://tiktokshipingjiexi.pages.dev/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="TikTok 无水印下载">
+<meta name="twitter:description" content="粘贴 TikTok 分享链接，解析公开视频和图集，去掉水印后保存到这台设备。">
 <link rel="stylesheet" href="jiexi.css">
 <style>
   /* 这页比抖音多出来的结果操作。只用 jiexi.css 的 token，不另起一套组件。 */
@@ -82,6 +94,7 @@
           </div>
         </div>
         <button type="button" class="btn" id="parseBtn">开始解析</button>
+        <div id="tsParseWidget" style="display:none"></div>
         <p class="hint">在 TikTok App 点「分享」，再点「Copy link」或「复制链接」，把整段文字粘到这里</p>
       </div>
     </div>
@@ -212,6 +225,7 @@
     </div>
     <p class="fb-note" id="fbLinkNote" hidden>输入框里的链接会一起提交，方便对照是哪一条。</p>
     <div id="fbErr" style="display:none"></div>
+    <div id="fbTsBox" style="display:none;margin:8px 0"></div>
     <div class="fb-actions">
       <button type="button" class="btn-ok" id="fbSubmit">提交反馈</button>
     </div>
@@ -240,14 +254,83 @@ var deviceId = (function(){
   // 走本站 Cloudflare Pages 函数代理，避免直连被拦截
   var API = '/api/parse?url=';
 
+  // 纯文本显示（textContent），换行用 \n；接口/上游返回的文字绝不当 HTML
   function showError(msg){
     errorMsg.style.display = 'block';
-    errorMsg.innerHTML = msg;
+    errorMsg.style.whiteSpace = 'pre-line';
+    errorMsg.textContent = String(msg == null ? '' : msg);
     loading.style.display = 'none';
     result.style.display = 'none';
     resetParseBtn();
   }
-  function hideError(){ errorMsg.style.display = 'none'; errorMsg.innerHTML = ''; }
+  function hideError(){ errorMsg.style.display = 'none'; errorMsg.textContent = ''; }
+
+  /* 人机验证（懒加载）：首屏不加载 Turnstile，用户第一次点「开始解析」（或打开反馈）时才拉脚本并渲染。
+     站点公钥从 /api/turnstile-key 取；后端没配公钥时返回空，这里就直接放行（后端也不会校验）。
+     脚本全页只加载一次（重复引入会卡死组件）；每个需要验证的位置用 JxTs.make() 各自一个组件。 */
+  var JxTs = (function(){
+    var keyP = null, scriptP = null;
+    function siteKey(){
+      if (!keyP) keyP = fetch('/api/turnstile-key').then(function(r){ return r.json(); })
+        .then(function(j){ return (j && j.ok && j.siteKey) ? String(j.siteKey) : ''; })
+        .catch(function(){ keyP = null; return ''; });
+      return keyP;
+    }
+    function script(){
+      if (window.turnstile) return Promise.resolve();
+      if (!scriptP) scriptP = new Promise(function(resolve, reject){
+        var s = document.createElement('script');
+        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+        s.async = true;
+        s.onload = function(){ resolve(); };
+        s.onerror = function(){ scriptP = null; reject(new Error('人机验证组件加载失败，请检查网络后重试')); };
+        document.head.appendChild(s);
+      });
+      return scriptP;
+    }
+    function make(boxId){
+      var wid = null, waiters = [];
+      function flush(ok, val){ var w = waiters; waiters = []; w.forEach(function(f){ ok ? f[0](val) : f[1](val); }); }
+      // 取一个可用 token：需要时渲染组件并等验证完成；后端没配公钥时返回 ''
+      function token(){
+        return siteKey().then(function(k){
+          if (!k) return '';
+          return script().then(function(){
+            return new Promise(function(resolve, reject){
+              var timer = setTimeout(function(){ reject(new Error('人机验证超时，请完成验证后再点一次')); }, 120000);
+              var done = function(t){ clearTimeout(timer); resolve(t); };
+              var fail = function(e){ clearTimeout(timer); reject(e || new Error('人机验证未通过，请再点一次')); };
+              if (wid === null) {
+                var box = document.getElementById(boxId);
+                if (!box) { fail(new Error('人机验证组件加载失败，请刷新页面重试')); return; }
+                box.style.display = '';
+                try {
+                  wid = turnstile.render(box, {
+                    sitekey: k, theme: 'dark', language: 'zh-cn',
+                    callback: function(t){ flush(true, t); },
+                    'error-callback': function(){ flush(false, new Error('人机验证出错，请再点一次')); return true; },
+                    'expired-callback': function(){ try { turnstile.reset(wid); } catch (e) {} }
+                  });
+                } catch (e) { fail(new Error('人机验证组件加载失败，请刷新页面重试')); return; }
+              } else {
+                var cur = '';
+                try { cur = turnstile.getResponse(wid) || ''; } catch (e) {}
+                if (cur) { done(cur); return; }
+              }
+              waiters.push([done, fail]);
+            });
+          });
+        });
+      }
+      // token 只能用一次：请求发出后重置，下次会重新验证（通常无感自动完成）
+      function used(){ if (wid !== null) { try { turnstile.reset(wid); } catch (e) {} } }
+      return { token: token, used: used };
+    }
+    return { siteKey: siteKey, script: script, make: make };
+  })();
+  
+  var JxTsParse = JxTs.make('tsParseWidget');
+  var JxTsFb = JxTs.make('fbTsBox');
 
   $('pasteBtn').onclick = function(){
     if (navigator.clipboard && navigator.clipboard.readText) {
@@ -375,8 +458,8 @@ var deviceId = (function(){
           preview.style.boxShadow = '0 0 0 3px var(--jx-accent)';
           setTimeout(function(){ preview.style.boxShadow = 'none'; }, 3000);
         }
-        showError('一键下载失败，各地址错误如下：<br>' + errLog.join('<br>') +
-          '<br><br>请<b>长按上方视频 → 保存到照片</b>，即可保存无水印视频到相册。');
+        showError('一键下载失败，各地址错误如下：\n' + errLog.join('\n') +
+          '\n\n请长按上方视频 → 保存到照片，即可保存无水印视频到相册。');
         return;
       }
       var u = urls[idx++];
@@ -415,13 +498,18 @@ var deviceId = (function(){
       showError('链接看起来不像 TikTok 分享链接，请检查后重试。');
       return;
     }
+    if (parseBtn.disabled) return;
+    setParseBtn('人机验证中…', true);
+    JxTsParse.token().then(function(tsToken){
     loading.style.display = 'block';
     result.style.display = 'none';
     setParseBtn('解析中…', true);
 
     var apiUrl = API + encodeURIComponent(url);
     if (typeof deviceId !== 'undefined' && deviceId) apiUrl += '&deviceId=' + encodeURIComponent(deviceId);
-    fetch(apiUrl)
+    if (tsToken) apiUrl += '&turnstile=' + encodeURIComponent(tsToken);
+    JxTsParse.used();
+    return fetch(apiUrl)
       .then(function(r){
         return r.text().then(function(t){
           var j;
@@ -446,12 +534,15 @@ var deviceId = (function(){
       })
       .catch(function(e){
         loading.style.display = 'none';
-        showError('解析失败：' + (e.message || '网络错误') + '<br>请确认链接有效，或稍后重试。');
+        showError('解析失败：' + (e.message || '网络错误') + '\n请确认链接有效，或稍后重试。');
       });
+    }, function(e){
+      showError(String((e && e.message) || '人机验证未完成，请再点一次'));
+    });
   };
   /* 本站解析次数 */
   fetch('/api/stats').then(function(r){ return r.json(); }).then(function(j){
-    if (j.ok && typeof j.parseCount === 'number') $('parseCount').textContent = j.parseCount;
+    $('parseCount').textContent = (j && j.ok && typeof j.parseCount === 'number') ? j.parseCount : '-';
   }).catch(function(){});
 
   function renderResult(d){
@@ -614,18 +705,11 @@ var deviceId = (function(){
     if (!msg && !fbKind) { fbShowErr('先写一下遇到了什么，或选一个问题类型。'); $('fbMsg').focus(); return; }
     var files = fbPicked.map(function(item){ return item.file; });
     var tsToken = '';
-    if (typeof tsWidgetId !== 'undefined') {
-      if (tsWidgetId !== null) {
-        try { tsToken = turnstile.getResponse(tsWidgetId) || ''; } catch (e) {}
-        if (!tsToken) { fbShowErr('请先完成人机验证。'); return; }
-      } else {
-        fbShowErr('验证组件未加载完成，请稍等几秒再试。');
-        return;
-      }
-    }
     var btn = $('fbSubmit');
     btn.disabled = true; btn.textContent = '提交中…';
     try {
+      tsToken = await JxTsFb.token();
+      JxTsFb.used();
       var fd = new FormData();
       fd.append('message', fbCompose(msg));
       fd.append('contact', $('fbContact').value.trim());
@@ -646,8 +730,7 @@ var deviceId = (function(){
       } else {
         fbShowErr('反馈提交失败：' + (j.error || '请稍后重试'));
       }
-    } catch (e) { fbShowErr('网络错误，请稍后重试。'); }
-    if (typeof tsWidgetId !== 'undefined' && tsWidgetId !== null) { try { turnstile.reset(tsWidgetId); } catch (e) {} }
+    } catch (e) { fbShowErr((e && e.message && /验证/.test(e.message)) ? e.message : '网络错误，请稍后重试。'); }
     btn.disabled = false; btn.textContent = '提交反馈';
   };
 

@@ -14,6 +14,7 @@ export async function onRequestGet(context) {
     { key: 'stats_parse_douyin', name: '抖音站' },
     { key: 'stats_parse_youtube', name: 'YouTube站' },
     { key: 'stats_parse_bilibili', name: 'B站站' },
+    { key: 'stats_parse_kuaishou', name: '快手站' },
   ];
   const kv = env.FEEDBACK_KV;
   const result = [];
