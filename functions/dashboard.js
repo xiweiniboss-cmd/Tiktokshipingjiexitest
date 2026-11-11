@@ -35,7 +35,7 @@ h2{font-size:16px;margin:24px 0 12px;color:#f1f1f3}
 </style></head>
 <body><div class="wrap">
 <h1>📊 数据总览 <span id="time"></span></h1>
-<div class="sub">五站解析次数统计（仅成功计数）</div>
+<div class="sub">各站解析次数统计（仅成功计数）</div>
 <div class="grid" id="grid"><div class="err">加载中…</div></div>
 <div class="total" id="total" style="display:none"><div class="num" id="totalNum">0</div><div class="label">累计解析</div></div>
 
@@ -63,7 +63,7 @@ h2{font-size:16px;margin:24px 0 12px;color:#f1f1f3}
 </div><script>
 const key = new URLSearchParams(location.search).get('key') || '';
 document.getElementById('adminLink').href = '/admin?key=' + encodeURIComponent(key);
-const COLORS = ['#FE2C55','#25F4EE','#FFC107','#9C27B0'];
+const COLORS = ['#FE2C55','#25F4EE','#FFC107','#9C27B0','#FF7A1A','#4CAF50'];
 const COUNTRY_ZH = {CN:'中国',US:'美国',JP:'日本',KR:'韩国',HK:'香港',TW:'台湾',MO:'澳门',SG:'新加坡',GB:'英国',DE:'德国',FR:'法国',IT:'意大利',ES:'西班牙',CA:'加拿大',AU:'澳大利亚',NZ:'新西兰',RU:'俄罗斯',IN:'印度',BR:'巴西',MX:'墨西哥',TH:'泰国',MY:'马来西亚',ID:'印度尼西亚',PH:'菲律宾',VN:'越南',TR:'土耳其',AE:'阿联酋',XX:'未知'};
 async function load(){
   const grid = document.getElementById('grid');
