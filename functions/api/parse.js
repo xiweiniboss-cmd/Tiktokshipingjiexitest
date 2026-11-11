@@ -18,6 +18,12 @@ function isTikTokUrl(u) {
     return false;
   }
 }
+// 从整段分享文字里抽出第一条 http(s) 链接（和其他站一致），去掉结尾的中英文标点
+function extractFirstLink(text) {
+  const m = String(text || '').match(/https?:\/\/[^\s"'<>]+/i);
+  if (!m) return '';
+  return m[0].replace(/[),.;!?\]}>»」』】，。；：？！）、]+$/, '');
+}
 async function verifyTurnstile(token, secret, ip) {
   try {
     const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
@@ -33,7 +39,9 @@ async function verifyTurnstile(token, secret, ip) {
 }
 
 export async function onRequest(context) {
-  const target = new URL(context.request.url).searchParams.get('url');
+  const rawInput = new URL(context.request.url).searchParams.get('url') || '';
+  // 用户常贴整段分享文字：先抽第一条链接，再走域名白名单
+  const target = extractFirstLink(rawInput);
   const env = context.env || {};
 
   const json = (obj, status) =>
@@ -46,7 +54,8 @@ export async function onRequest(context) {
       },
     });
 
-  if (!target) return json({ code: -1, msg: '请先粘贴 TikTok 分享链接' }, 400);
+  if (!rawInput.trim()) return json({ code: -1, msg: '请先粘贴 TikTok 分享链接' }, 400);
+  if (!target) return json({ code: -1, msg: '没有找到链接，请粘贴完整的 TikTok 分享链接' }, 400);
   if (!isTikTokUrl(target)) {
     return json({ code: -1, msg: '链接看起来不像 TikTok 分享链接' }, 400);
   }
