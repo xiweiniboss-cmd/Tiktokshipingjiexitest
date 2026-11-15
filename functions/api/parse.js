@@ -5,7 +5,8 @@ import { createParseLog } from '../../lib/parse-log.js';
 // 解析失败记录（写 FEEDBACK_KV 的 pf_tiktok_<北京日期>，allfeedback 后台「解析失败」里看）
 const pf = createPfRecorder('tiktok');
 // 解析记录 + 拉黑（D1 parse_log，绑定名 PARSE_DB，allfeedback 后台「解析记录」「黑名单」里看）
-const pl = createParseLog('tiktok');
+// 只记有效链接：和 handleParse 开头的本地校验同一套判断（空 / 没链接 / 不是 TikTok → 400，不记）
+const pl = createParseLog('tiktok', { valid: (t) => { const l = String(t).trim() && extractFirstLink(t); return !!l && isTikTokUrl(l); } });
 // Cloudflare Pages Function: 解析代理（三通道）
 // 通道1: RapidAPI tiktok-api23（独立额度，需配置 RAPIDAPI_KEY 环境变量）
 // 通道2: TikWM 公开接口（双域名+重试）
