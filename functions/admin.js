@@ -1,4 +1,5 @@
-// 反馈管理后台：GET /admin?key=管理密码（深色主题）
+import { serveAdminPage } from '../lib/security.js';
+// 反馈管理后台：GET /admin（先在登录页输入管理密码，之后凭 HttpOnly Cookie 访问）
 const ADMIN_HTML = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,11 +18,11 @@ h1{font-size:20px;margin:8px 0 4px}h1 span{font-size:13px;color:#9a9aa3;font-wei
 </style></head>
 <body><div class="wrap">
 <h1>用户反馈 <span id="count"></span></h1>
-<div style="margin:6px 0 4px"><a href="/dashboard?key=" id="dashLink" style="font-size:13px;color:#FE2C55">📊 数据总览</a></div>
-<script>document.getElementById('dashLink').href = '/dashboard?key=' + encodeURIComponent(new URLSearchParams(location.search).get('key') || '');</script>
+<div style="margin:6px 0 4px"><a href="/dashboard" id="dashLink" style="font-size:13px;color:#FE2C55">📊 数据总览</a></div>
+ <a href="#" id="logoutLink" style="font-size:13px;color:#999;margin-left:10px">退出登录</a>
+<script>document.getElementById('logoutLink').onclick = function(e){ e.preventDefault(); fetch('/api/admin/logout', { method: 'POST' }).then(function(){ location.reload(); }); };</script>
 <div id="list">加载中…</div>
 </div><script>
-const key = new URLSearchParams(location.search).get('key') || '';
 const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const COUNTRY_ZH = {CN:'中国',US:'美国',JP:'日本',KR:'韩国',HK:'香港',TW:'台湾',MO:'澳门',SG:'新加坡',GB:'英国',DE:'德国',FR:'法国',IT:'意大利',ES:'西班牙',CA:'加拿大',AU:'澳大利亚',NZ:'新西兰',RU:'俄罗斯',IN:'印度',BR:'巴西',MX:'墨西哥',AR:'阿根廷',KR:'韩国',TH:'泰国',MY:'马来西亚',ID:'印度尼西亚',PH:'菲律宾',VN:'越南',TR:'土耳其',AE:'阿联酋',SA:'沙特',EG:'埃及',ZA:'南非',NL:'荷兰',SE:'瑞典',NO:'挪威',FI:'芬兰',DK:'丹麦',PL:'波兰',UA:'乌克兰',CH:'瑞士',AT:'奥地利',BE:'比利时',IE:'爱尔兰',PT:'葡萄牙',GR:'希腊',CZ:'捷克',HU:'匈牙利',RO:'罗马尼亚',IL:'以色列',KZ:'哈萨克斯坦'};
 function geoName(it){
@@ -47,7 +48,7 @@ const siteName = (p) => {
 async function load() {
   const box = document.getElementById('list');
   try {
-    const r = await fetch('/api/feedback/list?key=' + encodeURIComponent(key));
+    const r = await fetch('/api/feedback/list');
     const j = await r.json();
     if (!j.ok) { box.innerHTML = '<div class="empty">加载失败：' + esc(j.error) + '</div>'; return; }
     document.getElementById('count').textContent = '共 ' + j.count + ' 条';
@@ -74,7 +75,7 @@ async function load() {
       if (it.attachments && it.attachments.length) {
         const att = document.createElement('div');
         for (const a of it.attachments) {
-          const src = '/api/fb-file?f=' + encodeURIComponent(a.key) + '&key=' + encodeURIComponent(key);
+          const src = '/api/fb-file?f=' + encodeURIComponent(a.key);
           const fname = esc(String(a.name || 'attachment'));
           if (String(a.type || '').startsWith('image/')) {
             att.innerHTML += '<img src="' + src + '" style="max-width:100%;border-radius:8px;margin-top:8px;display:block" loading="lazy">';
@@ -89,7 +90,7 @@ async function load() {
       btn.textContent = '删除';
       btn.onclick = async () => {
         if (!confirm('删除这条反馈？')) return;
-        await fetch('/api/feedback?id=' + encodeURIComponent(it.id) + '&key=' + encodeURIComponent(key), { method: 'DELETE' });
+        await fetch('/api/feedback?id=' + encodeURIComponent(it.id), { method: 'DELETE' });
         load();
       };
       d.appendChild(btn);
@@ -101,16 +102,6 @@ load();
 <\/script></body></html>`;
 
 export async function onRequestGet(context) {
-  const { request, env } = context;
-  const url = new URL(request.url);
-  const adminKey = env.FEEDBACK_ADMIN_KEY || '';
-  if (!adminKey || url.searchParams.get('key') !== adminKey) {
-    return new Response('无权访问：在地址后加上 ?key=你的管理密码，例如 /admin?key=xxx', {
-      status: 403,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-    });
-  }
-  return new Response(ADMIN_HTML, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' },
-  });
+  // 未登录给登录页；旧书签带的密码参数校验后换成 HttpOnly Cookie 并跳转去掉地址栏密码
+  return serveAdminPage(context.request, context.env, ADMIN_HTML);
 }

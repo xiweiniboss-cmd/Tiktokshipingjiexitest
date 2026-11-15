@@ -1,3 +1,4 @@
+import { isAdmin } from '../../lib/security.js';
 // 诊断接口：一次性测试各通道在 Cloudflare 网络下的真实状态
 // 访问 /api/diag?url=<tiktok分享链接> 查看 JSON 诊断结果
 const MOBILE_UA =
@@ -32,15 +33,13 @@ export async function onRequest(context) {
   // 诊断接口只给管理员（以前任何人都能让它拿任意地址去打 TikWM）
   {
     const env0 = context.env || {};
-    const k = env0.FEEDBACK_ADMIN_KEY || '';
-    if (!k || new URL(context.request.url).searchParams.get('key') !== k)
+    if (!(await isAdmin(context.request, env0)))
       return new Response(JSON.stringify({ ok: false, error: '无权访问' }), { status: 403, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
   }
   const target = new URL(context.request.url).searchParams.get('url') || '';
   const H = {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-store',
     },
   };

@@ -1,11 +1,11 @@
-// 反馈附件查看（管理）：GET /api/fb-file?f=<key>&key=管理密码
+import { isAdmin } from '../../lib/security.js';
+// 反馈附件查看（管理）：GET /api/fb-file?f=<key>（需管理员登录 Cookie）
 // 附件类型白名单：浏览器传上来的 type 可被伪造，image/svg+xml 这类能带脚本的类型一律拒收
 const SAFE_ATTACH_TYPE = /^(image\/(png|jpe?g|pjpeg|gif|webp|heic|heif|avif|bmp)|video\/[a-z0-9.+-]+)$/i;
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);
-  const adminKey = env.FEEDBACK_ADMIN_KEY || '';
-  if (!adminKey || url.searchParams.get('key') !== adminKey)
+  if (!(await isAdmin(request, env)))
     return new Response('无权访问', { status: 403 });
   if (!env.FEEDBACK_BUCKET) return new Response('未绑定存储', { status: 500 });
   const key = url.searchParams.get('f') || '';

@@ -1,10 +1,10 @@
-// 反馈列表（管理）：GET /api/feedback/list?key=管理密码
+import { isAdmin } from '../../../lib/security.js';
+// 反馈列表（管理）：GET /api/feedback/list（需管理员登录 Cookie 或 Authorization: Bearer）
 const json = (obj, status) =>
   new Response(JSON.stringify(obj), {
     status: status || 200,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-store',
     },
   });
@@ -12,8 +12,7 @@ const json = (obj, status) =>
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);
-  const adminKey = env.FEEDBACK_ADMIN_KEY || '';
-  if (!adminKey || url.searchParams.get('key') !== adminKey)
+  if (!(await isAdmin(request, env)))
     return json({ ok: false, error: '无权访问' }, 403);
   if (!env.FEEDBACK_KV) return json({ ok: false, error: '未绑定 KV' }, 500);
   const items = [];

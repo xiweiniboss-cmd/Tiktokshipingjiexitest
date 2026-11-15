@@ -1,4 +1,5 @@
-// 数据总览页：GET /dashboard?key=管理密码
+import { serveAdminPage } from '../lib/security.js';
+// 数据总览页：GET /dashboard（先在登录页输入管理密码，之后凭 HttpOnly Cookie 访问）
 const DASHBOARD_HTML = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -59,16 +60,14 @@ h2{font-size:16px;margin:24px 0 12px;color:#f1f1f3}
 <div class="panel" id="histList"><div style="color:#9a9aa3;font-size:13px;text-align:center">加载中…</div></div>
 
 <div class="refresh"><button onclick="load()">🔄 刷新</button></div>
-<div class="links"><a href="/admin?key=" id="adminLink">💬 反馈管理</a></div>
+<div class="links"><a href="/admin" id="adminLink">💬 反馈管理</a></div>
 </div><script>
-const key = new URLSearchParams(location.search).get('key') || '';
-document.getElementById('adminLink').href = '/admin?key=' + encodeURIComponent(key);
 const COLORS = ['#FE2C55','#25F4EE','#FFC107','#9C27B0','#FF7A1A','#4CAF50'];
 const COUNTRY_ZH = {CN:'中国',US:'美国',JP:'日本',KR:'韩国',HK:'香港',TW:'台湾',MO:'澳门',SG:'新加坡',GB:'英国',DE:'德国',FR:'法国',IT:'意大利',ES:'西班牙',CA:'加拿大',AU:'澳大利亚',NZ:'新西兰',RU:'俄罗斯',IN:'印度',BR:'巴西',MX:'墨西哥',TH:'泰国',MY:'马来西亚',ID:'印度尼西亚',PH:'菲律宾',VN:'越南',TR:'土耳其',AE:'阿联酋',XX:'未知'};
 async function load(){
   const grid = document.getElementById('grid');
   try{
-    const r = await fetch('/api/stats-all?key=' + encodeURIComponent(key));
+    const r = await fetch('/api/stats-all');
     const j = await r.json();
     if(!j.ok){ grid.innerHTML = '<div class="err">加载失败：' + (j.error || '未知错误') + '</div>'; return; }
     const sites = j.sites;
@@ -94,7 +93,7 @@ function escH(s){ return String(s || '').replace(/[&<>"']/g, function(c){ return
 async function loadHistory(){
   const box = document.getElementById('histList');
   try{
-    const r = await fetch('/api/parse-history?key=' + encodeURIComponent(key));
+    const r = await fetch('/api/parse-history');
     const j = await r.json();
     if(!j.ok || !j.items || !j.items.length){ box.innerHTML = '<div style="color:#9a9aa3;font-size:13px;text-align:center">暂无数据（新解析才会记录）</div>'; return; }
     box.innerHTML = '';
@@ -113,7 +112,7 @@ async function loadHistory(){
 }
 async function loadGeo(){
   try{
-    const r = await fetch('/api/geo-stats?key=' + encodeURIComponent(key));
+    const r = await fetch('/api/geo-stats');
     const j = await r.json();
     if(!j.ok) return;
     const byCountry = j.byCountry || {};
@@ -185,15 +184,6 @@ load();
 <\/script></body></html>`;
 
 export async function onRequestGet(context) {
-  const { request, env } = context;
-  const url = new URL(request.url);
-  const adminKey = env.FEEDBACK_ADMIN_KEY || '';
-  if (!adminKey || url.searchParams.get('key') !== adminKey)
-    return new Response('无权访问：在地址后加上 ?key=你的管理密码', {
-      status: 403,
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-    });
-  return new Response(DASHBOARD_HTML, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' },
-  });
+  // 未登录给登录页；旧书签带的密码参数校验后换成 HttpOnly Cookie 并跳转去掉地址栏密码
+  return serveAdminPage(context.request, context.env, DASHBOARD_HTML);
 }

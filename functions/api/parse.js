@@ -1,3 +1,4 @@
+import { ipLimitKey } from '../../lib/security.js';
 // Cloudflare Pages Function: 解析代理（三通道）
 // 通道1: RapidAPI tiktok-api23（独立额度，需配置 RAPIDAPI_KEY 环境变量）
 // 通道2: TikWM 公开接口（双域名+重试）
@@ -49,7 +50,6 @@ export async function onRequest(context) {
       status: status || 200,
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'no-store',
       },
     });
@@ -74,7 +74,7 @@ export async function onRequest(context) {
   const parseIp = context.request.headers.get('cf-connecting-ip') || '';
   const kv = env.FEEDBACK_KV;
   if (parseIp && kv) {
-    const lastTs = await kv.get('pcool_tiktok_' + parseIp);
+    const lastTs = await kv.get('pcool_tiktok_' + ipLimitKey(parseIp));
     if (lastTs) {
       const remain = PARSE_COOLDOWN_SECS - Math.floor((Date.now() - Number(lastTs)) / 1000);
       if (remain > 0) return json({ code: -1, msg: `解析太频繁，请 ${remain} 秒后再试` }, 429);
@@ -85,7 +85,7 @@ export async function onRequest(context) {
   const bjDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   const reqUrl = new URL(context.request.url);
   const deviceId = reqUrl.searchParams.get('deviceId') || '';
-  const quotaId = parseIp || deviceId; // 按 IP 计配额：deviceId 由前端传，换一个就能绕过
+  const quotaId = ipLimitKey(parseIp) || deviceId; // 按 IP 计配额：deviceId 由前端传，换一个就能绕过
   const quotaKey = 'dlimit_tiktok_' + quotaId + '_' + bjDate;
   let usedToday = 0;
   if (parseIp && kv) {
@@ -96,7 +96,7 @@ export async function onRequest(context) {
   const succeed = async (obj) => {
     if (parseIp && kv) {
       try {
-        await kv.put('pcool_tiktok_' + parseIp, String(Date.now()), {
+        await kv.put('pcool_tiktok_' + ipLimitKey(parseIp), String(Date.now()), {
           expirationTtl: PARSE_COOLDOWN_SECS,
         });
       } catch {}

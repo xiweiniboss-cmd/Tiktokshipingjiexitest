@@ -1,9 +1,9 @@
-// 全站解析统计（管理）：GET /api/stats-all?key=管理密码
+import { isAdmin } from '../../lib/security.js';
+// 全站解析统计（管理）：GET /api/stats-all（需管理员登录 Cookie 或 Authorization: Bearer）
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);
-  const adminKey = env.FEEDBACK_ADMIN_KEY || '';
-  if (!adminKey || url.searchParams.get('key') !== adminKey)
+  if (!(await isAdmin(request, env)))
     return new Response(JSON.stringify({ ok: false, error: '无权访问' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -30,7 +30,6 @@ export async function onRequestGet(context) {
   return new Response(JSON.stringify({ ok: true, sites: result }), {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-store',
     },
   });
