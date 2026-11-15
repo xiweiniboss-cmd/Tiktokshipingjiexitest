@@ -1,3 +1,4 @@
+import { fetchAllowedHops } from '../../lib/security.js';
 // Cloudflare Pages Function: 下载代理
 // 中转 TikTok CDN 文件并加上 Content-Disposition，iPhone 上会弹出下载提示
 // 仅允许 TikTok 相关域名，防止被当成公开代理滥用。
@@ -40,14 +41,16 @@ export async function onRequest(context) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
-    const r = await fetch(u.toString(), {
+    // 手动跟随跳转（最多 5 跳），每一跳都重新校验 https + 域名白名单（以前默认 follow，只校验第一跳）
+    const r = await fetchAllowedHops(u.toString(), {
       signal: ctrl.signal,
       headers: {
         'User-Agent':
           'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
         Referer: 'https://www.tiktok.com/',
       },
-    });
+    }, hostAllowed);
+    if (!r) return new Response('host not allowed', { status: 403 });
     if (!r.ok || !r.body) return new Response('upstream fetch failed: ' + r.status, { status: 502 });
 
     const ct = r.headers.get('Content-Type') || 'application/octet-stream';
@@ -55,7 +58,6 @@ export async function onRequest(context) {
       headers: {
         'Content-Type': ct,
         'Content-Disposition': 'attachment; filename="' + filename + '"',
-        'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'no-store',
       },
     });

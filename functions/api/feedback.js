@@ -1,3 +1,6 @@
+import { isAdmin, ipLimitKey } from '../../lib/security.js';
+// 附件类型白名单：浏览器传上来的 type 可被伪造，image/svg+xml 这类能带脚本的类型一律拒收
+const SAFE_ATTACH_TYPE = /^(image\/(png|jpe?g|pjpeg|gif|webp|heic|heif|avif|bmp)|video\/[a-z0-9.+-]+)$/i;
 // 反馈提交（POST）+ 删除（DELETE）
 // 存储：KV（FEEDBACK_KV），附件：R2（FEEDBACK_BUCKET）
 // 与小红书站共用同一 KV/R2，管理后台任选一边查看即可
@@ -6,7 +9,6 @@ const json = (obj, status) =>
     status: status || 200,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-store',
     },
   });
@@ -25,10 +27,6 @@ async function verifyTurnstile(token, secret, ip) {
   }
 }
 
-const checkAdminKey = (url, env) => {
-  const key = env.FEEDBACK_ADMIN_KEY || '';
-  return !!key && url.searchParams.get('key') === key;
-};
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -79,7 +77,7 @@ export async function onRequestPost(context) {
   const COOLDOWN_SECS = 600;
   const clientIp = request.headers.get('cf-connecting-ip') || '';
   if (clientIp) {
-    const lastTs = await env.FEEDBACK_KV.get('cool_tiktok_' + clientIp);
+    const lastTs = await env.FEEDBACK_KV.get('cool_tiktok_' + ipLimitKey(clientIp));
     if (lastTs) {
       const remain = COOLDOWN_SECS - Math.floor((Date.now() - Number(lastTs)) / 1000);
       if (remain > 0)
@@ -96,7 +94,7 @@ export async function onRequestPost(context) {
     if (!env.FEEDBACK_BUCKET) return json({ ok: false, error: '附件功能暂未启用' }, 500);
     for (const f of files) {
       const type = f.type || '';
-      if (!/^(image|video)\//.test(type))
+      if (!SAFE_ATTACH_TYPE.test(type))
         return json({ ok: false, error: '只支持图片和视频附件' }, 400);
       if (f.size > 20 * 1024 * 1024)
         return json({ ok: false, error: '单个附件不能超过 20MB' }, 400);
@@ -129,7 +127,7 @@ export async function onRequestPost(context) {
   await env.FEEDBACK_KV.put(id, JSON.stringify(record));
   // 写入冷却时间戳（10 分钟后自动过期；键前缀 cool_ 不与 fb_ 反馈键冲突）
   if (clientIp)
-    await env.FEEDBACK_KV.put('cool_tiktok_' + clientIp, String(Date.now()), {
+    await env.FEEDBACK_KV.put('cool_tiktok_' + ipLimitKey(clientIp), String(Date.now()), {
       expirationTtl: COOLDOWN_SECS,
     });
   return json({ ok: true });
@@ -138,7 +136,7 @@ export async function onRequestPost(context) {
 export async function onRequestDelete(context) {
   const { request, env } = context;
   const url = new URL(request.url);
-  if (!checkAdminKey(url, env)) return json({ ok: false, error: '无权访问' }, 403);
+  if (!(await isAdmin(request, env))) return json({ ok: false, error: '无权访问' }, 403);
   if (!env.FEEDBACK_KV) return json({ ok: false, error: '未绑定 KV' }, 500);
   const id = url.searchParams.get('id') || '';
   if (!/^fb_[a-z0-9_]+$/i.test(id)) return json({ ok: false, error: '参数错误' }, 400);

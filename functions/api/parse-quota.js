@@ -1,3 +1,4 @@
+import { ipLimitKey } from '../../lib/security.js';
 // 每日解析配额查询：GET /api/parse-quota
 export async function onRequestGet(context) {
   const { request, env } = context;
@@ -5,7 +6,7 @@ export async function onRequestGet(context) {
   const reqUrl = new URL(request.url);
   const ip = request.headers.get('cf-connecting-ip') || '';
   const deviceId = reqUrl.searchParams.get('deviceId') || '';
-  const quotaId = deviceId || ip;
+  const quotaId = ipLimitKey(ip) || deviceId; // 与解析接口一致，按 IP 查
   const bjDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   let used = 0;
   const kv = env.FEEDBACK_KV;
@@ -19,7 +20,6 @@ export async function onRequestGet(context) {
     {
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'no-store',
       },
     }

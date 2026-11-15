@@ -1,9 +1,9 @@
-// 解析者归属地分布（管理）：GET /api/geo-stats?key=管理密码
+import { isAdmin } from '../../lib/security.js';
+// 解析者归属地分布（管理）：GET /api/geo-stats（需管理员登录 Cookie）
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);
-  const adminKey = env.FEEDBACK_ADMIN_KEY || '';
-  if (!adminKey || url.searchParams.get('key') !== adminKey)
+  if (!(await isAdmin(request, env)))
     return new Response(JSON.stringify({ ok: false, error: '无权访问' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -29,7 +29,6 @@ export async function onRequestGet(context) {
   return new Response(JSON.stringify({ ok: true, byCountry, bySite }), {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-store',
     },
   });
