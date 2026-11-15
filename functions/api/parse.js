@@ -1,7 +1,7 @@
 import { ipLimitKey } from '../../lib/security.js';
 import { createPfRecorder } from '../../lib/pf-recorder.js';
 
-// 解析失败记录（写 FEEDBACK_KV 的 pf_tiktok_<北京日期>，allfeedback 后台「解析失败」里看）
+// 解析失败记录（写 D1 parse_log 的 ok=0 行，绑定名 PARSE_DB；allfeedback 后台「解析失败」里看）；预览部署不提供解析
 const pf = createPfRecorder('tiktok');
 // Cloudflare Pages Function: 解析代理（三通道）
 // 通道1: RapidAPI tiktok-api23（独立额度，需配置 RAPIDAPI_KEY 环境变量）
