@@ -1,4 +1,8 @@
 import { ipLimitKey } from '../../lib/security.js';
+import { createPfRecorder } from '../../lib/pf-recorder.js';
+
+// 解析失败记录（写 FEEDBACK_KV 的 pf_tiktok_<北京日期>，allfeedback 后台「解析失败」里看）
+const pf = createPfRecorder('tiktok');
 // Cloudflare Pages Function: 解析代理（三通道）
 // 通道1: RapidAPI tiktok-api23（独立额度，需配置 RAPIDAPI_KEY 环境变量）
 // 通道2: TikWM 公开接口（双域名+重试）
@@ -40,6 +44,10 @@ async function verifyTurnstile(token, secret, ip) {
 }
 
 export async function onRequest(context) {
+  return pf.wrap(context.request, context.env || {}, context, () => handleParse(context));
+}
+
+async function handleParse(context) {
   const rawInput = new URL(context.request.url).searchParams.get('url') || '';
   // 用户常贴整段分享文字：先抽第一条链接，再走域名白名单
   const target = extractFirstLink(rawInput);
