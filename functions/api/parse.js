@@ -1,8 +1,11 @@
 import { ipLimitKey } from '../../lib/security.js';
 import { createPfRecorder } from '../../lib/pf-recorder.js';
+import { createParseLog } from '../../lib/parse-log.js';
 
 // 解析失败记录（写 FEEDBACK_KV 的 pf_tiktok_<北京日期>，allfeedback 后台「解析失败」里看）
 const pf = createPfRecorder('tiktok');
+// 解析记录 + 拉黑（D1 parse_log，绑定名 PARSE_DB，allfeedback 后台「解析记录」「黑名单」里看）
+const pl = createParseLog('tiktok');
 // Cloudflare Pages Function: 解析代理（三通道）
 // 通道1: RapidAPI tiktok-api23（独立额度，需配置 RAPIDAPI_KEY 环境变量）
 // 通道2: TikWM 公开接口（双域名+重试）
@@ -44,7 +47,8 @@ async function verifyTurnstile(token, secret, ip) {
 }
 
 export async function onRequest(context) {
-  return pf.wrap(context.request, context.env || {}, context, () => handleParse(context));
+  const env = context.env || {};
+  return pl.wrap(context.request, env, context, () => pf.wrap(context.request, env, context, () => handleParse(context)));
 }
 
 async function handleParse(context) {
