@@ -1,4 +1,5 @@
 import { ipLimitKey } from '../../lib/security.js';
+import { rateTake, turnstileDisabled } from '../../lib/rate-limit.js';
 import { createParseLog, plPass } from '../../lib/parse-log.js';
 
 // 解析记录 + 拉黑（D1 parse_log，绑定名 PARSE_DB，allfeedback 后台「解析记录」「黑名单」「解析失败」里看）；预览部署不提供解析
@@ -72,6 +73,7 @@ async function handleParse(context) {
 
   // 人机验证：配了 TURNSTILE_SECRET_KEY 才校验
   const tsSecret = String(env.TURNSTILE_SECRET_KEY || '').trim();
+  if (!tsSecret && !turnstileDisabled(env)) return json({ code: -1, msg: '人机验证未配置，暂停解析' }, 503);
   if (tsSecret) {
     const tsToken = new URL(context.request.url).searchParams.get('turnstile') || '';
     if (!tsToken) return json({ code: -1, msg: '请先完成人机验证' }, 400);
@@ -79,50 +81,19 @@ async function handleParse(context) {
     if (!ok) return json({ code: -1, msg: '人机验证未通过，请重试' }, 403);
   }
 
-  // 解析冷却：同一 IP 60 秒内只能解析一次（防刷 API 额度）
-  const PARSE_COOLDOWN_SECS = 60;
+  // 频控：冷却 60 秒 + 每 IP 每天 20 次。解析前原子占坑（D1），并发打不穿，失败也算一次
   const parseIp = context.request.headers.get('cf-connecting-ip') || '';
   const kv = env.FEEDBACK_KV;
-  if (parseIp && kv) {
-    const lastTs = await kv.get('pcool_tiktok_' + ipLimitKey(parseIp));
-    if (lastTs) {
-      const remain = PARSE_COOLDOWN_SECS - Math.floor((Date.now() - Number(lastTs)) / 1000);
-      if (remain > 0) return json({ code: -1, msg: `解析太频繁，请 ${remain} 秒后再试` }, 429);
-    }
-  }
-  // 每日解析限额：同一 IP 每天最多 20 次（deviceId 前端可随意改，不能作为限额依据），按北京时间算天
-  const DAILY_LIMIT = 20;
-  const bjDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-  const reqUrl = new URL(context.request.url);
-  const deviceId = reqUrl.searchParams.get('deviceId') || '';
-  const quotaId = ipLimitKey(parseIp) || deviceId; // 按 IP 计配额：deviceId 由前端传，换一个就能绕过
-  const quotaKey = 'dlimit_tiktok_' + quotaId + '_' + bjDate;
-  let usedToday = 0;
-  if (parseIp && kv) {
-    try { usedToday = Number((await kv.get(quotaKey)) || 0); } catch {}
-    if (usedToday >= DAILY_LIMIT)
-      return json({ code: -1, msg: '今日解析次数已用完（20 次），明天再来吧' }, 429);
-  }
+  const deviceId = new URL(context.request.url).searchParams.get('deviceId') || '';
+  const rl = await rateTake(env, 'tiktok', parseIp);
+  if (!rl.ok) return json({ code: -1, msg: rl.msg }, rl.status);
   plPass(context.request); // 人机验证 + 冷却 + 每日次数都过了：这次解析才记进 D1 parse_log
   const succeed = async (obj) => {
-    if (parseIp && kv) {
-      try {
-        await kv.put('pcool_tiktok_' + ipLimitKey(parseIp), String(Date.now()), {
-          expirationTtl: PARSE_COOLDOWN_SECS,
-        });
-      } catch {}
-    }
     // 本站解析次数统计（仅成功计数）
     if (kv) {
       try {
         const cur = Number((await kv.get('stats_parse_tiktok')) || 0);
         await kv.put('stats_parse_tiktok', String(cur + 1));
-      } catch {}
-    }
-    // 每日限额计数（仅成功计数，48小时过期）
-    if (parseIp && kv) {
-      try {
-        await kv.put(quotaKey, String(usedToday + 1), { expirationTtl: 172800 });
       } catch {}
     }
     // 解析者归属地分布（按站点+国家聚合）
