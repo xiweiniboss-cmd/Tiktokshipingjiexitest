@@ -1,27 +1,11 @@
-import { ipLimitKey } from '../../lib/security.js';
-// 每日解析配额查询：GET /api/parse-quota
+import { rateUsed, RL_DAILY_LIMIT } from '../../lib/rate-limit.js';
+// 每日解析配额查询：GET /api/parse-quota（和解析接口同一个 D1 计数）
 export async function onRequestGet(context) {
   const { request, env } = context;
-  const DAILY_LIMIT = 20;
-  const reqUrl = new URL(request.url);
-  const ip = request.headers.get('cf-connecting-ip') || '';
-  const deviceId = reqUrl.searchParams.get('deviceId') || '';
-  const quotaId = ipLimitKey(ip) || deviceId; // 与解析接口一致，按 IP 查
-  const bjDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-  let used = 0;
-  const kv = env.FEEDBACK_KV;
-  if (quotaId && kv) {
-    try {
-      used = Number((await kv.get('dlimit_tiktok_' + quotaId + '_' + bjDate)) || 0);
-    } catch {}
-  }
+  const DAILY_LIMIT = RL_DAILY_LIMIT;
+  const used = await rateUsed(env, 'tiktok', request.headers.get('cf-connecting-ip') || '');
   return new Response(
     JSON.stringify({ ok: true, limit: DAILY_LIMIT, used, remaining: Math.max(0, DAILY_LIMIT - used) }),
-    {
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
-      },
-    }
+    { headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } }
   );
 }
