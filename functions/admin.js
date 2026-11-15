@@ -33,7 +33,7 @@ function geoName(it){
 }
 const siteName = (p) => {
   try {
-    const h = new URL(p).hostname;
+    const h = new URL(p).hostname.toLowerCase();
     if (h.includes('tiktok')) return 'TikTok站';
     if (h.includes('xiaohongshu')) return '小红书站';
     if (h.includes('douyin')) return '抖音站';
@@ -41,7 +41,7 @@ const siteName = (p) => {
     if (h.includes('bilibili')) return 'B站站';
     if (h.includes('kuaishou')) return '快手站';
     if (h.includes('weibo')) return '微博站';
-    if (h.includes('DeepSeek')) return 'DeepSeek站';
+    if (h.includes('deepseek')) return 'DeepSeek站';
     return h;
   } catch { return ''; }
 };
@@ -60,7 +60,9 @@ async function load() {
       const t = new Date(it.time).toLocaleString('zh-CN', { hour12: false });
       d.innerHTML = '<div class="meta"><span class="site">[' + esc(siteName(it.page)) + ']</span> ' + esc(t) +
         (it.contact ? ' · ' + esc(it.contact) : '') + (it.ip ? ' · IP: ' + esc(it.ip) : '') + (geoName(it) ? ' (' + esc(geoName(it)) + ')' : '') + '</div>' +
-        '<div class="msg">' + esc(it.message) + '</div>';
+        (it.kind ? '<div class="kind" style="font-size:12px;color:#ff8a00;margin-bottom:4px">【' + esc(it.kind) + '】</div>' : '') +
+        '<div class="msg">' + esc(it.message) + '</div>' +
+        (it.link ? '<div class="link" style="font-size:12px;color:#888;margin-top:6px;white-space:pre-wrap;word-break:break-all">当前输入：' + esc(it.link) + '</div>' : '');
       const copyBtn = document.createElement('button');
       copyBtn.textContent = '📋 复制文本';
       copyBtn.style.cssText = 'margin-top:8px;background:#f0f0f2;border:none;border-radius:8px;padding:8px 16px;font-size:13px;color:#333;cursor:pointer';
@@ -90,7 +92,10 @@ async function load() {
       btn.textContent = '删除';
       btn.onclick = async () => {
         if (!confirm('删除这条反馈？')) return;
-        await fetch('/api/feedback?id=' + encodeURIComponent(it.id), { method: 'DELETE' });
+        let r = null, j = null;
+        try { r = await fetch('/api/feedback?id=' + encodeURIComponent(it.id), { method: 'DELETE' }); j = await r.json().catch(() => null); } catch (e) {}
+        if (r && (r.status === 401 || r.status === 403)) { alert('登录已过期，请重新登录'); location.href = '/admin'; return; }
+        if (!r || !r.ok || !j || !j.ok) { alert('删除失败：' + ((j && j.error) || (r ? 'HTTP ' + r.status : '网络错误'))); return; }
         load();
       };
       d.appendChild(btn);
