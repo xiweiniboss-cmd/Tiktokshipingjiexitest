@@ -1,3 +1,5 @@
+// 附件类型白名单：浏览器传上来的 type 可被伪造，image/svg+xml 这类能带脚本的类型一律拒收
+const SAFE_ATTACH_TYPE = /^(image\/(png|jpe?g|pjpeg|gif|webp|heic|heif|avif|bmp)|video\/[a-z0-9.+-]+)$/i;
 // 反馈提交（POST）+ 删除（DELETE）
 // 存储：KV（FEEDBACK_KV），附件：R2（FEEDBACK_BUCKET）
 // 与小红书站共用同一 KV/R2，管理后台任选一边查看即可
@@ -96,7 +98,7 @@ export async function onRequestPost(context) {
     if (!env.FEEDBACK_BUCKET) return json({ ok: false, error: '附件功能暂未启用' }, 500);
     for (const f of files) {
       const type = f.type || '';
-      if (!/^(image|video)\//.test(type))
+      if (!SAFE_ATTACH_TYPE.test(type))
         return json({ ok: false, error: '只支持图片和视频附件' }, 400);
       if (f.size > 20 * 1024 * 1024)
         return json({ ok: false, error: '单个附件不能超过 20MB' }, 400);

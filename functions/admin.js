@@ -111,6 +111,6 @@ export async function onRequestGet(context) {
     });
   }
   return new Response(ADMIN_HTML, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' },
   });
 }
