@@ -1,4 +1,8 @@
 import { fetchAllowedHops } from '../../lib/security.js';
+import { createParseLog } from '../../lib/parse-log.js';
+
+// 被拉黑的 IP / 设备 / 指纹也不能下载（只查黑名单，不记）
+const pl = createParseLog('tiktok');
 // Cloudflare Pages Function: 下载代理
 // 中转 TikTok CDN 文件并加上 Content-Disposition，iPhone 上会弹出下载提示
 // 仅允许 TikTok 相关域名，防止被当成公开代理滥用。
@@ -24,6 +28,9 @@ function hostAllowed(host) {
 }
 
 export async function onRequest(context) {
+  return pl.guard(context.request, context.env || {}, context, () => handleDl(context));
+}
+async function handleDl(context) {
   const sp = new URL(context.request.url).searchParams;
   const target = sp.get('url') || '';
   const filename = (sp.get('filename') || 'tiktok.mp4').replace(/["\r\n]/g, '').slice(0, 80) || 'tiktok.mp4';

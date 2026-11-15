@@ -1,10 +1,7 @@
 import { ipLimitKey } from '../../lib/security.js';
-import { createPfRecorder } from '../../lib/pf-recorder.js';
-import { createParseLog } from '../../lib/parse-log.js';
+import { createParseLog, plPass } from '../../lib/parse-log.js';
 
-// 解析失败记录（写 D1 parse_log 的 ok=0 行，绑定名 PARSE_DB；allfeedback 后台「解析失败」里看）；预览部署不提供解析
-const pf = createPfRecorder('tiktok');
-// 解析记录 + 拉黑（D1 parse_log，绑定名 PARSE_DB，allfeedback 后台「解析记录」「黑名单」里看）
+// 解析记录 + 拉黑（D1 parse_log，绑定名 PARSE_DB，allfeedback 后台「解析记录」「黑名单」「解析失败」里看）；预览部署不提供解析
 // 只记有效链接：和 handleParse 开头的本地校验同一套判断（空 / 没链接 / 不是 TikTok → 400，不记）
 const pl = createParseLog('tiktok', { valid: (t) => { const l = String(t).trim() && extractFirstLink(t); return !!l && isTikTokUrl(l); } });
 // Cloudflare Pages Function: 解析代理（三通道）
@@ -49,7 +46,7 @@ async function verifyTurnstile(token, secret, ip) {
 
 export async function onRequest(context) {
   const env = context.env || {};
-  return pl.wrap(context.request, env, context, () => pf.wrap(context.request, env, context, () => handleParse(context)));
+  return pl.wrap(context.request, env, context, () => handleParse(context));
 }
 
 async function handleParse(context) {
@@ -106,6 +103,7 @@ async function handleParse(context) {
     if (usedToday >= DAILY_LIMIT)
       return json({ code: -1, msg: '今日解析次数已用完（20 次），明天再来吧' }, 429);
   }
+  plPass(context.request); // 人机验证 + 冷却 + 每日次数都过了：这次解析才记进 D1 parse_log
   const succeed = async (obj) => {
     if (parseIp && kv) {
       try {
