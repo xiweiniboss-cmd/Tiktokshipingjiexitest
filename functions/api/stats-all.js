@@ -1,5 +1,5 @@
 import { isAdmin } from '../../lib/security.js';
-// 全站解析统计（管理）：GET /api/stats-all（需管理员登录 Cookie 或 Authorization: Bearer）
+// 全站解析统计（管理）：GET /api/stats-all（需管理员登录 Cookie）
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);

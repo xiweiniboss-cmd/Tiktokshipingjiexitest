@@ -1,5 +1,5 @@
 import { isAdmin } from '../../lib/security.js';
-// 解析者归属地分布（管理）：GET /api/geo-stats（需管理员登录 Cookie 或 Authorization: Bearer）
+// 解析者归属地分布（管理）：GET /api/geo-stats（需管理员登录 Cookie）
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);

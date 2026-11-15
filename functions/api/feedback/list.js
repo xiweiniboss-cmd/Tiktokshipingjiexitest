@@ -1,5 +1,5 @@
 import { isAdmin } from '../../../lib/security.js';
-// 反馈列表（管理）：GET /api/feedback/list（需管理员登录 Cookie 或 Authorization: Bearer）
+// 反馈列表（管理）：GET /api/feedback/list（需管理员登录 Cookie）
 const json = (obj, status) =>
   new Response(JSON.stringify(obj), {
     status: status || 200,
