@@ -1,6 +1,6 @@
 import { ipLimitKey } from '../../lib/security.js';
 import { rateTake, turnstileDisabled } from '../../lib/rate-limit.js';
-import { createParseLog, plPass } from '../../lib/parse-log.js';
+import { createParseLog, plPass, plMeta } from '../../lib/parse-log.js';
 
 // 解析记录 + 拉黑（D1 parse_log，绑定名 PARSE_DB，allfeedback 后台「解析记录」「黑名单」「解析失败」里看）；预览部署不提供解析
 // 只记有效链接：和 handleParse 开头的本地校验同一套判断（空 / 没链接 / 不是 TikTok → 400，不记）
@@ -89,6 +89,15 @@ async function handleParse(context) {
   if (!rl.ok) return json({ code: -1, msg: rl.msg }, rl.status);
   plPass(context.request); // 人机验证 + 冷却 + 每日次数都过了：这次解析才记进 D1 parse_log
   const succeed = async (obj) => {
+    // 预览卡片（allfeedback「解析记录」）：封面 / 标题 / 类型（TikWM 偶尔给 /video/cover/… 相对路径，补成 tikwm.com 绝对地址）
+    try {
+      const d = (obj && obj.data) || {};
+      let cover = String(d.cover || d.origin_cover || d.ai_dynamic_cover || '');
+      if (/^\/[^/]/.test(cover) && d._source === 'tikwm') cover = 'https://www.tikwm.com' + cover;
+      const imgs = Array.isArray(d.images) ? d.images : [];
+      if (!cover && typeof imgs[0] === 'string') cover = imgs[0];
+      plMeta(context.request, { cover, title: d.title, media: imgs.length ? (imgs.length > 1 ? 'images' : 'image') : 'video' });
+    } catch {}
     // 本站解析次数统计（仅成功计数）
     if (kv) {
       try {
