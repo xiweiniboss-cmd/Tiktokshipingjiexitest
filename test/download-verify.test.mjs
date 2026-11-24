@@ -71,3 +71,16 @@ test('TikWM 接口失败也能下：直抓页面拿到视频 ID，就先试 TikW
   assert.equal(j.data.play, 'https://www.tikwm.com/video/media/play/7123.mp4');
   assert.equal(j.data._source, 'scrape');
 });
+
+test('TikWM 日限额用完：不重试，返回 client_fallback 让浏览器自己调 TikWM', async () => {
+  const d1 = sqliteD1();
+  let tikwmCalls = 0;
+  const j = await parseWith(d1, (u) => {
+    if (u.includes('tikwm.com/api/')) { tikwmCalls++; return new Response(JSON.stringify({ code: -1, msg: 'Free Api Limit: 10000 request/ 1 day.' })); }
+    return new Response('nope', { status: 403, headers: { 'content-type': 'text/html' } });
+  });
+  assert.equal(tikwmCalls, 1);
+  assert.notEqual(j.code, 0);
+  assert.equal(j.client_fallback, 'tikwm');
+  assert.equal(j.url, 'https://www.tiktok.com/@a/video/7123');
+});

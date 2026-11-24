@@ -173,11 +173,15 @@ async function handleParse(context) {
 
   // —— 通道2: TikWM（双域名 + 重试） ——
   const tikwmHosts = ['https://www.tikwm.com/api/', 'https://tikwm.com/api/'];
+  // TikWM 免费接口按来源 IP 限额（每秒 1 次、每天 1 万次）。Cloudflare 的出口 IP 是大家共用的，
+  // 日限额经常一早就被别人用光，这时服务端再重试也没用：标记一下，让浏览器用用户自己的 IP 去调 TikWM。
+  let tikwmOk = false;
   tikwm: for (const host of tikwmHosts) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const tw = await fetchTikwm(host, target);
         if (tw && tw.code === 0 && tw.data) {
+          tikwmOk = true;
           const d = tw.data;
           // TikWM 自家的 /video/media/play/<id>.mp4 会 302 到新签发的 CDN 直链，放进备选。
           // 不放 wmplay：那是带水印的，页面承诺的是无水印下载。
@@ -188,6 +192,7 @@ async function handleParse(context) {
           if (r) return r;
           break tikwm; // 拿到了数据但直链读不到：换通道3，不再重复打 TikWM
         }
+        if (tw && /api limit.*day/i.test(tw.msg || '')) break tikwm; // 日限额用完：不再重试
         if (tw && /parsing is failed|invalid/i.test(tw.msg || '')) {
           if (unverified) break tikwm;
           // 不再原样透传上游 msg（上游文本不可信），给固定中文提示
@@ -207,13 +212,16 @@ async function handleParse(context) {
     }
   } catch (e) {}
 
+  // TikWM 这次没从服务端拿到结果：告诉前端改由浏览器直接调 TikWM（用户自己的 IP，有自己的额度）
+  const fallback = tikwmOk ? {} : { client_fallback: 'tikwm', url: target };
   if (unverified) {
     // 拿到了视频信息，但没有一个下载地址能读到数据：明确报错，别让调用方拿着坏链接去下载
-    return json({ code: -2, msg: '找到了视频，但下载地址暂时都不可用，请稍后重新解析' });
+    return json({ code: -2, msg: '找到了视频，但下载地址暂时都不可用，请稍后重新解析', ...fallback });
   }
   return json({
     code: -1,
     msg: '解析服务暂时不可用，请稍后再试',
+    ...fallback,
   });
 }
 
