@@ -141,6 +141,14 @@ async function handleParse(context) {
   let unverified = false;
   const accept = async (data, source) => {
     data._source = source;
+    // 不管 TikWM 接口这次成没成功：只要拿到视频 ID，就把 TikWM 的 /video/media/play/<id>.mp4 放进候选。
+    // RapidAPI / 直抓页面给的是要配 cookie 才能读的网页版直链，大概率读不到，所以把它排在最前面。
+    if (source !== 'tikwm' && /^\d+$/.test(String(data.id || '')) && !(Array.isArray(data.images) && data.images.length)) {
+      const media = 'https://www.tikwm.com/video/media/play/' + data.id + '.mp4';
+      const rest = [data.play, ...(data.play_alts || [])].filter((u) => u && u !== media);
+      data.play = media;
+      data.play_alts = rest;
+    }
     const ok = await verifyPlayable(data, source);
     if (ok) return succeed({ code: 0, msg: 'success', data });
     unverified = true;
@@ -186,7 +194,7 @@ async function handleParse(context) {
           return json({ code: -1, msg: '解析失败：链接无效，或视频已删除/设为私密' });
         }
       } catch (e) {}
-      if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 1200)); // TikWM 大约每秒限 1 次，间隔拉开一点
     }
   }
 

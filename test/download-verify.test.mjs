@@ -56,3 +56,18 @@ test('首个直链 403：自动换到能读到视频数据的备选地址', asyn
     assert.ok(j.data.play_alts.includes('https://v16m.tiktokcdn.com/dead.mp4'));
   } finally { globalThis.fetch = orig; }
 });
+
+test('TikWM 接口失败也能下：直抓页面拿到视频 ID，就先试 TikWM 的 media 地址', async () => {
+  const d1 = sqliteD1();
+  const html = '<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">' + JSON.stringify({ __DEFAULT_SCOPE__: { 'webapp.reflow.video.detail': { itemInfo: { itemStruct: { id: '7123', desc: 't', video: { playAddr: 'https://v16-webapp.tiktok.com/needcookie.mp4' }, author: {}, music: {} } } } } }) + '</script>';
+  const j = await parseWith(d1, (u) => {
+    if (u.includes('tikwm.com/api/')) return new Response('rate limited', { status: 429 });
+    if (u.includes('www.tiktok.com/@a/video')) return new Response(html, { headers: { 'content-type': 'text/html' } });
+    if (u.includes('tikwm.com/video/media/play/7123.mp4')) return new Response(null, { status: 302, headers: { location: 'https://v19.tiktokcdn-us.com/good.mp4' } });
+    if (u.includes('good.mp4')) return new Response(new Uint8Array(1024), { status: 206, headers: { 'content-type': 'video/mp4' } });
+    return new Response('nope', { status: 403, headers: { 'content-type': 'text/html' } });
+  });
+  assert.equal(j.code, 0);
+  assert.equal(j.data.play, 'https://www.tikwm.com/video/media/play/7123.mp4');
+  assert.equal(j.data._source, 'scrape');
+});
