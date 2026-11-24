@@ -137,13 +137,13 @@ async function handleParse(context) {
   };
 
   // 「解析成功」不再等于「拿到地址」：视频帖先用小范围 GET 验证候选直链能读到视频数据，
-  // 同一通道的地址都读不到就换下一个通道；所有通道都没验证通过时，才退回第一个拿到的结果（标 _verified=false）。
-  let unverified = null;
+  // 同一通道的地址都读不到就换下一个通道；所有通道都没验证通过时返回 code -2（不算成功、不进成功统计）。
+  let unverified = false;
   const accept = async (data, source) => {
     data._source = source;
     const ok = await verifyPlayable(data, source);
     if (ok) return succeed({ code: 0, msg: 'success', data });
-    if (!unverified) unverified = data;
+    unverified = true;
     return null;
   };
 
@@ -171,9 +171,10 @@ async function handleParse(context) {
         const tw = await fetchTikwm(host, target);
         if (tw && tw.code === 0 && tw.data) {
           const d = tw.data;
-          // TikWM 自家的 /video/media/play/<id>.mp4 会 302 到新签发的 CDN 直链，放进备选
+          // TikWM 自家的 /video/media/play/<id>.mp4 会 302 到新签发的 CDN 直链，放进备选。
+          // 不放 wmplay：那是带水印的，页面承诺的是无水印下载。
           if (d.id && !d.images) {
-            d.play_alts = [...new Set([...(d.play_alts || []), d.hdplay, d.wmplay, 'https://www.tikwm.com/video/media/play/' + encodeURIComponent(String(d.id)) + '.mp4'].filter((u) => u && u !== d.play))];
+            d.play_alts = [...new Set([...(d.play_alts || []), d.hdplay, 'https://www.tikwm.com/video/media/play/' + encodeURIComponent(String(d.id)) + '.mp4'].filter((u) => u && u !== d.play && u !== d.wmplay))];
           }
           const r = await accept(d, 'tikwm');
           if (r) return r;
@@ -199,8 +200,8 @@ async function handleParse(context) {
   } catch (e) {}
 
   if (unverified) {
-    unverified._verified = false;
-    return succeed({ code: 0, msg: 'success', data: unverified });
+    // 拿到了视频信息，但没有一个下载地址能读到数据：明确报错，别让调用方拿着坏链接去下载
+    return json({ code: -2, msg: '找到了视频，但下载地址暂时都不可用，请稍后重新解析' });
   }
   return json({
     code: -1,
@@ -217,10 +218,10 @@ function mediaHostAllowed(host) {
 }
 
 // 小范围 GET（只要前 1KB）：2xx 且不是 HTML/JSON 才算能下载。返回 { ok, status, host }
-async function probeMedia(url) {
+async function probeMedia(url, timeoutMs = 8000) {
   let host = '';
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
+  const timer = setTimeout(() => ctrl.abort(), Math.max(500, Math.min(8000, timeoutMs)));
   try {
     let cur = String(url);
     for (let hop = 0; hop <= 5; hop++) {
@@ -251,14 +252,19 @@ async function probeMedia(url) {
   }
 }
 
+// 每条通道的验证总时限：超了就直接换下一条通道，不让用户一直转圈
+const PROBE_BUDGET_MS = 15000;
 // 视频帖：依次验证 play + play_alts，第一个能读到数据的放到 play，其余能用的留在 play_alts；图集不验证
 async function verifyPlayable(data, source) {
   if (Array.isArray(data.images) && data.images.length) return true;
   const cands = [...new Set([data.play, ...(data.play_alts || [])].filter((u) => typeof u === 'string' && /^https?:/i.test(u)))];
   const good = [];
   const log = [];
+  const deadline = Date.now() + PROBE_BUDGET_MS;
   for (const u of cands) {
-    const p = await probeMedia(u);
+    const left = deadline - Date.now();
+    if (left < 500) { log.push('budget'); break; }
+    const p = await probeMedia(u, left);
     log.push(p.host + ':' + p.status);
     if (p.ok) {
       good.push(u);
