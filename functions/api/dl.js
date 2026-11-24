@@ -58,7 +58,11 @@ async function handleDl(context) {
       },
     }, hostAllowed);
     if (!r) return new Response('host not allowed', { status: 403 });
-    if (!r.ok || !r.body) return new Response('upstream fetch failed: ' + r.status, { status: 502 });
+    if (!r.ok || !r.body) {
+      // 记下媒体域名和上游状态码，方便在 Cloudflare 日志里看是哪一路给了不可用的直链
+      try { console.log(JSON.stringify({ ev: 'tiktok_dl_fail', host: u.hostname, status: r.status })); } catch {}
+      return new Response('upstream fetch failed: ' + r.status, { status: 502, headers: { 'X-Upstream-Status': String(r.status) } });
+    }
 
     const ct = r.headers.get('Content-Type') || 'application/octet-stream';
     return new Response(r.body, {

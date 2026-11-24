@@ -136,6 +136,17 @@ async function handleParse(context) {
     return json(obj);
   };
 
+  // 「解析成功」不再等于「拿到地址」：视频帖先用小范围 GET 验证候选直链能读到视频数据，
+  // 同一通道的地址都读不到就换下一个通道；所有通道都没验证通过时，才退回第一个拿到的结果（标 _verified=false）。
+  let unverified = null;
+  const accept = async (data, source) => {
+    data._source = source;
+    const ok = await verifyPlayable(data, source);
+    if (ok) return succeed({ code: 0, msg: 'success', data });
+    if (!unverified) unverified = data;
+    return null;
+  };
+
   // —— 通道1: RapidAPI（独立额度，最优先） ——
   if (env.RAPIDAPI_KEY) {
     try {
@@ -143,8 +154,8 @@ async function handleParse(context) {
       if (videoId) {
         const data = await fetchRapidApi(env.RAPIDAPI_KEY, videoId);
         if (data) {
-          data._source = 'rapidapi';
-          return succeed({ code: 0, msg: 'success', data });
+          const r = await accept(data, 'rapidapi');
+          if (r) return r;
         }
       }
     } catch (e) {
@@ -154,15 +165,22 @@ async function handleParse(context) {
 
   // —— 通道2: TikWM（双域名 + 重试） ——
   const tikwmHosts = ['https://www.tikwm.com/api/', 'https://tikwm.com/api/'];
-  for (const host of tikwmHosts) {
+  tikwm: for (const host of tikwmHosts) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const tw = await fetchTikwm(host, target);
         if (tw && tw.code === 0 && tw.data) {
-          tw.data._source = 'tikwm';
-          return succeed(tw);
+          const d = tw.data;
+          // TikWM 自家的 /video/media/play/<id>.mp4 会 302 到新签发的 CDN 直链，放进备选
+          if (d.id && !d.images) {
+            d.play_alts = [...new Set([...(d.play_alts || []), d.hdplay, d.wmplay, 'https://www.tikwm.com/video/media/play/' + encodeURIComponent(String(d.id)) + '.mp4'].filter((u) => u && u !== d.play))];
+          }
+          const r = await accept(d, 'tikwm');
+          if (r) return r;
+          break tikwm; // 拿到了数据但直链读不到：换通道3，不再重复打 TikWM
         }
         if (tw && /parsing is failed|invalid/i.test(tw.msg || '')) {
+          if (unverified) break tikwm;
           // 不再原样透传上游 msg（上游文本不可信），给固定中文提示
           return json({ code: -1, msg: '解析失败：链接无效，或视频已删除/设为私密' });
         }
@@ -175,14 +193,85 @@ async function handleParse(context) {
   try {
     const scraped = await scrapeTikTok(target);
     if (scraped) {
-      return succeed({ code: 0, msg: 'success', data: scraped });
+      const r = await accept(scraped, 'scrape');
+      if (r) return r;
     }
   } catch (e) {}
 
+  if (unverified) {
+    unverified._verified = false;
+    return succeed({ code: 0, msg: 'success', data: unverified });
+  }
   return json({
     code: -1,
     msg: '解析服务暂时不可用，请稍后再试',
   });
+}
+
+// 允许验证 / 代理的媒体域名（与 /api/dl 保持一致）
+const MEDIA_HOSTS = ['tiktokcdn.com', 'tiktokcdn-us.com', 'tiktokcdn-eu.com', 'tiktokv.com', 'tiktokv.us', 'tiktokv.eu', 'tiktok.com', 'tikwm.com', 'byteoversea.com', 'ibytedtos.com', 'ibyteimg.com'];
+function mediaHostAllowed(host) {
+  host = String(host || '').toLowerCase().replace(/\.$/, '');
+  if (MEDIA_HOSTS.some((d) => host === d || host.endsWith('.' + d))) return true;
+  return /^v\d+[a-z0-9-]*\.akamaized\.net$/.test(host);
+}
+
+// 小范围 GET（只要前 1KB）：2xx 且不是 HTML/JSON 才算能下载。返回 { ok, status, host }
+async function probeMedia(url) {
+  let host = '';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    let cur = String(url);
+    for (let hop = 0; hop <= 5; hop++) {
+      const u = new URL(cur);
+      host = u.hostname;
+      if (u.protocol !== 'https:' || !mediaHostAllowed(host)) return { ok: false, status: 'host', host };
+      const r = await fetch(u.toString(), {
+        headers: { 'User-Agent': MOBILE_UA, Referer: 'https://www.tiktok.com/', Range: 'bytes=0-1023' },
+        redirect: 'manual',
+        signal: ctrl.signal,
+      });
+      const loc = r.headers.get('location');
+      if (r.status >= 300 && r.status < 400 && loc) {
+        try { if (r.body) await r.body.cancel(); } catch {}
+        cur = new URL(loc, u).toString();
+        continue;
+      }
+      try { if (r.body) await r.body.cancel(); } catch {}
+      const ct = String(r.headers.get('content-type') || '');
+      const ok = (r.status === 200 || r.status === 206) && !/html|json|text\//i.test(ct);
+      return { ok, status: r.status, host };
+    }
+    return { ok: false, status: 'hops', host };
+  } catch (e) {
+    return { ok: false, status: e && e.name === 'AbortError' ? 'timeout' : 'error', host };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// 视频帖：依次验证 play + play_alts，第一个能读到数据的放到 play，其余能用的留在 play_alts；图集不验证
+async function verifyPlayable(data, source) {
+  if (Array.isArray(data.images) && data.images.length) return true;
+  const cands = [...new Set([data.play, ...(data.play_alts || [])].filter((u) => typeof u === 'string' && /^https?:/i.test(u)))];
+  const good = [];
+  const log = [];
+  for (const u of cands) {
+    const p = await probeMedia(u);
+    log.push(p.host + ':' + p.status);
+    if (p.ok) {
+      good.push(u);
+      break; // 有一个能用就够了，剩下的不再逐个打（省时间），原样留作备选
+    }
+  }
+  try { console.log(JSON.stringify({ ev: 'tiktok_probe', source, ok: good.length > 0, tries: log })); } catch {}
+  if (!good.length) return false;
+  const rest = cands.filter((u) => u !== good[0]);
+  data.play = good[0];
+  data.play_alts = rest;
+  data._verified = true;
+  return true;
 }
 
 // 从分享链接提取视频 ID（完整链接直接正则，短链取跳转 Location）
