@@ -513,7 +513,13 @@ var deviceId = (function(){
   function hideDlProg(){ var w = document.getElementById('dlProg'); if(w) w.style.display = 'none'; }
 
   function downloadFile(url, filename, altUrls){
-    var urls = [url].concat(altUrls || []);
+    // 每个地址先手机直连；直连失败（跨域 / Failed to fetch / 4xx）再走本站 /api/dl 代理，然后才换下一个地址
+    var urls = [];
+    [url].concat(altUrls || []).forEach(function(u){
+      if (!u || urls.some(function(x){ return x.src === u; })) return;
+      urls.push({ src: u, href: u, via: '直连' });
+      if (/^https?:/i.test(u)) urls.push({ src: u, href: dlProxy(u, filename), via: '代理' });
+    });
     var idx = 0;
     setParseBtn('正在准备下载…', true); __hkHideBtn();
 
@@ -531,10 +537,12 @@ var deviceId = (function(){
           '\n\n请长按上方视频 → 保存到照片，即可保存无水印视频到相册。');
         return;
       }
-      var u = urls[idx++];
-      var shortUrl = u.length > 60 ? u.substring(0, 60) + '...' : u;
+      var c = urls[idx++];
+      var u = c.href;
+      var shortUrl = c.via + ' ' + (c.src.length > 60 ? c.src.substring(0, 60) + '...' : c.src);
       resetDlProg();
-      fetchBlobProgress(u, setDlProg, { referrerPolicy: 'no-referrer' }).then(function(blob){
+      fetchBlobProgress(u, setDlProg, c.via === '直连' ? { referrerPolicy: 'no-referrer' } : {}).then(function(blob){
+        if (!blob || blob.size < 1024 || /json|html|text\//i.test(blob.type || '')) throw new Error('返回的不是视频');
         hideDlProg();
         resetParseBtn();
         __hkSave(blob, filename);

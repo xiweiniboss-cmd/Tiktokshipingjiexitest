@@ -8,7 +8,13 @@ let ipN = 20;
 async function run(d1, data) {
   const jobs = [];
   const orig = globalThis.fetch;
-  globalThis.fetch = async (u) => String(u && u.url ? u.url : u).includes('tikwm.com/api/') ? new Response(JSON.stringify({ code: 0, msg: 'success', data })) : new Response('', { status: 404 });
+  globalThis.fetch = async (u) => {
+    u = String(u && u.url ? u.url : u);
+    if (u.includes('tikwm.com/api/')) return new Response(JSON.stringify({ code: 0, msg: 'success', data }));
+    // 下载直链验证：.mp4 当作能读到视频数据
+    if (/\.mp4/.test(u)) return new Response(new Uint8Array(1024), { status: 206, headers: { 'content-type': 'video/mp4' } });
+    return new Response('', { status: 404 });
+  };
   try {
     const request = new Request('https://tiktokshipingjiexitest.pages.dev/api/parse?url=' + encodeURIComponent('https://www.tiktok.com/@a/video/7123456789012345678'), { headers: { 'cf-connecting-ip': '198.51.100.' + (ipN++) } });
     const r = await onRequest({ request, env: { TURNSTILE_DISABLED: '1', PARSE_DB: d1 }, waitUntil: (p) => jobs.push(p) });
