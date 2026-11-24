@@ -565,6 +565,26 @@ var deviceId = (function(){
     parseBtn.disabled = false;
   }
 
+  function tikwmFromBrowser(link){
+    var abs = function(u){ return (typeof u === 'string' && /^\/[^/]/.test(u)) ? 'https://www.tikwm.com' + u : u; };
+    return fetch('https://www.tikwm.com/api/?hd=1&url=' + encodeURIComponent(link), { referrerPolicy: 'no-referrer' })
+      .then(function(r){ return r.json(); })
+      .then(function(t){
+        if(!t || t.code !== 0 || !t.data) throw new Error('tikwm ' + (t && t.code));
+        var d = t.data;
+        ['play','hdplay','cover','origin_cover','music'].forEach(function(k){ if(d[k]) d[k] = abs(d[k]); });
+        if(Array.isArray(d.images)) d.images = d.images.map(abs);
+        if(!d.images || !d.images.length){
+          if(!d.play) throw new Error('no play');
+          // 不用 wmplay（带水印）；TikWM 自家 media 地址刚解析过，会跳到新签的直链
+          var alts = [d.hdplay, d.id ? 'https://www.tikwm.com/video/media/play/' + encodeURIComponent(String(d.id)) + '.mp4' : ''];
+          d.play_alts = alts.filter(function(u, i, a){ return u && u !== d.play && u !== d.wmplay && a.indexOf(u) === i; });
+        }
+        d._source = 'tikwm-browser';
+        return d;
+      });
+  }
+
   function fileName(base, ext){ return 'tiktok_' + base + '.' + ext; }
 
   parseBtn.onclick = function(){
@@ -592,6 +612,10 @@ var deviceId = (function(){
           var j;
           try { j = JSON.parse(t); }
           catch(e){ throw new Error('服务器返回异常，可能是网络被拦截，请稍后重试'); }
+          if((j.code !== 0 || !j.data) && j.client_fallback === 'tikwm' && j.url){
+            // 服务端那边 TikWM 额度用完了：用浏览器（用户自己的 IP）直接调一次 TikWM
+            return tikwmFromBrowser(j.url).catch(function(){ throw new Error(j.msg || '解析失败'); });
+          }
           if(j.code !== 0 || !j.data){ throw new Error(j.msg || '解析失败'); }
           return j.data;
         });
