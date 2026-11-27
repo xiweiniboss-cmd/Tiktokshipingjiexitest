@@ -395,7 +395,8 @@ var deviceId = (function(){
       function used(){ if (wid !== null) { try { turnstile.reset(wid); } catch (e) {} } }
       function remove(){
         if (wid === null) return;
-        try { turnstile.remove(wid); } finally { wid = null; }
+        try { turnstile.remove(wid); } catch (e) {}
+        wid = null;
         document.getElementById(boxId).style.display = 'none';
       }
       return { token: token, used: used, remove: remove };
@@ -610,7 +611,6 @@ var deviceId = (function(){
     var apiUrl = API + encodeURIComponent(url);
     if (typeof deviceId !== 'undefined' && deviceId) apiUrl += '&deviceId=' + encodeURIComponent(deviceId);
     if (tsToken) apiUrl += '&turnstile=' + encodeURIComponent(tsToken);
-    JxTsParse.remove();
     return fetch(apiUrl, { headers: jxParseHeaders() })
       .then(function(r){
         return r.text().then(function(t){
@@ -642,7 +642,7 @@ var deviceId = (function(){
       .catch(function(e){
         loading.style.display = 'none';
         showError('解析失败：' + (e.message || '网络错误') + '\n请确认链接有效，或稍后重试。');
-      });
+      }).finally(function(){ JxTsParse.remove(); });
     }, function(e){
       showError(String((e && e.message) || '人机验证未完成，请再点一次'));
     });
